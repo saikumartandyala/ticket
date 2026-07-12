@@ -1,0 +1,37 @@
+.dotfield-root {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+.dotfield-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.dotfield-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: block;
+  /* soften the hard rectangular edges so it reads as an ambient field,
+     not a tiled wallpaper */
+  mask-image: radial-gradient(130% 110% at 50% 25%, black 45%, transparent 95%);
+  -webkit-mask-image: radial-gradient(130% 110% at 50% 25%, black 45%, transparent 95%);
+}
+
+.dotfield-glow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--glow-color, #120F17) 0%, transparent 72%);
+  opacity: 0;
+  pointer-events: none;
+  mix-blend-mode: normal;
+  transition: opacity 0.4s ease;
+  will-change: transform, opacity;
+}
