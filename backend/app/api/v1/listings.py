@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File,
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import and_, or_, func
+from sqlalchemy.orm import selectinload
 from typing import List, Optional
 
 from app.core.config import settings
@@ -16,6 +17,12 @@ from app.services.matching_service import check_seeker_alerts_for_listing
 from app.services import search_service
 
 router = APIRouter()
+
+# ListingResponse serializes listing.owner and listing.category — with an
+# async session those relationships MUST be eager-loaded here, or Pydantic
+# crashes trying to lazy-load them outside the request's async context
+# (SQLAlchemy MissingGreenlet error).
+LISTING_EAGER_LOAD = (selectinload(TicketListing.owner), selectinload(TicketListing.category))
 
 @router.get("", response_model=List[ListingResponse])
 async def get_listings(
@@ -31,7 +38,7 @@ async def get_listings(
     Get all active, non-expired listings with optional filtering.
     """
     now = datetime.now(timezone.utc)
-    stmt = select(TicketListing).where(
+    stmt = select(TicketListing).options(*LISTING_EAGER_LOAD).where(
         TicketListing.status == "active",
         TicketListing.expires_at > now
     )
@@ -47,13 +54,18 @@ async def get_listings(
     if max_price:
         stmt = stmt.where(TicketListing.asking_price <= max_price)
     if query:
-        # Simple string matching across title and description
+        # Simple string matching — covers both route-based listings
+        # (train/bus: origin/destination) and venue-based listings
+        # (IPL/concert/event: venue_name/venue_city), since only one set is
+        # ever populated depending on category.
         search_filter = or_(
             func.lower(TicketListing.title).contains(query.lower()),
             func.lower(TicketListing.description).contains(query.lower()),
             func.lower(TicketListing.origin_city).contains(query.lower()),
             func.lower(TicketListing.destination_city).contains(query.lower()),
-            func.lower(TicketListing.event_name).contains(query.lower())
+            func.lower(TicketListing.event_name).contains(query.lower()),
+            func.lower(TicketListing.venue_name).contains(query.lower()),
+            func.lower(TicketListing.venue_city).contains(query.lower())
         )
         stmt = stmt.where(search_filter)
         
@@ -137,7 +149,9 @@ async def create_listing(
     await search_service.index_listing(new_listing)
 
     # Query with relations to return full schema representation
-    result = await db.execute(select(TicketListing).where(TicketListing.id == new_listing.id))
+    result = await db.execute(
+        select(TicketListing).options(*LISTING_EAGER_LOAD).where(TicketListing.id == new_listing.id)
+    )
     return result.scalar_one()
 
 @router.get("/{id}", response_model=ListingResponse)
@@ -145,7 +159,7 @@ async def get_listing(id: str, db: AsyncSession = Depends(get_db)):
     """
     Get a single ticket listing details.
     """
-    result = await db.execute(select(TicketListing).where(TicketListing.id == id))
+    result = await db.execute(select(TicketListing).options(*LISTING_EAGER_LOAD).where(TicketListing.id == id))
     listing = result.scalar_one_or_none()
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
@@ -234,9 +248,19 @@ async def express_interest(
     
     await db.commit()
     await db.refresh(match)
-    
-    # Query with relations
-    res = await db.execute(select(Match).where(Match.id == match.id))
+
+    # Query with relations — MatchResponse nests listing (which itself nests
+    # owner/category) plus seeker/transferor, all must be eager-loaded.
+    res = await db.execute(
+        select(Match)
+        .options(
+            selectinload(Match.listing).selectinload(TicketListing.owner),
+            selectinload(Match.listing).selectinload(TicketListing.category),
+            selectinload(Match.seeker),
+            selectinload(Match.transferor),
+        )
+        .where(Match.id == match.id)
+    )
     return res.scalar_one()
 
 @router.post("/upload-photo")

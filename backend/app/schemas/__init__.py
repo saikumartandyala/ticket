@@ -1,28 +1,76 @@
-from pydantic import BaseModel, EmailStr, Field, field_validator
-from typing import List, Optional, Any, Dict
+import re
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+from typing import List, Optional, Any, Dict, Literal
 from datetime import date, time, datetime
 from decimal import Decimal
 
+Channel = Literal["phone", "email"]
+
+def _validate_identifier(identifier: str, channel: str) -> str:
+    if channel == "phone":
+        if not re.match(r"^\+91\d{10}$", identifier):
+            raise ValueError("Phone number must be in the format +91XXXXXXXXXX (Indian country code + 10 digits)")
+    else:
+        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", identifier):
+            raise ValueError("Enter a valid email address")
+    return identifier
+
 # --- AUTH SCHEMAS ---
 class OTPSendRequest(BaseModel):
-    phone: str = Field(..., description="Indian phone number with country code, e.g. +919876543210")
+    identifier: str = Field(..., description="Phone number (+91XXXXXXXXXX) or email address")
+    channel: Channel
 
-    @field_validator("phone")
-    @classmethod
-    def validate_indian_phone(cls, v: str) -> str:
-        import re
-        if not re.match(r"^\+91\d{10}$", v):
-            raise ValueError("Phone number must be in the format +91XXXXXXXXXX (Indian country code + 10 digits)")
-        return v
+    @model_validator(mode="after")
+    def check_identifier(self) -> "OTPSendRequest":
+        _validate_identifier(self.identifier, self.channel)
+        return self
 
 class OTPVerifyRequest(BaseModel):
-    phone: str
+    identifier: str
+    channel: Channel
     otp: str = Field(..., min_length=6, max_length=6)
+
+class CheckAccountRequest(BaseModel):
+    identifier: str
+    channel: Channel
+
+class CheckAccountResponse(BaseModel):
+    exists: bool
+    has_password: bool
+
+class PasswordLoginRequest(BaseModel):
+    identifier: str
+    channel: Channel
+    password: str
+
+class SetPasswordRequest(BaseModel):
+    password: str = Field(..., min_length=8, max_length=128)
+    confirm_password: str
+
+    @model_validator(mode="after")
+    def passwords_match(self) -> "SetPasswordRequest":
+        if self.password != self.confirm_password:
+            raise ValueError("Passwords do not match")
+        return self
+
+class ResetPasswordRequest(BaseModel):
+    identifier: str
+    channel: Channel
+    otp: str = Field(..., min_length=6, max_length=6)
+    new_password: str = Field(..., min_length=8, max_length=128)
+    confirm_password: str
+
+    @model_validator(mode="after")
+    def passwords_match(self) -> "ResetPasswordRequest":
+        if self.new_password != self.confirm_password:
+            raise ValueError("Passwords do not match")
+        return self
 
 class Token(BaseModel):
     access_token: str
     token_type: str
     is_new_user: bool = False
+    has_password: bool = False
 
 # --- USER SCHEMAS ---
 class UserProfileUpdate(BaseModel):
@@ -34,6 +82,8 @@ class UserProfileUpdate(BaseModel):
 class UserPublic(BaseModel):
     id: str
     name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
     avatar_url: Optional[str] = None
     phone_verified: bool
     email_verified: bool

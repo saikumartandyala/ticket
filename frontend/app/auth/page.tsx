@@ -3,60 +3,140 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '../../store/authStore';
-import { Smartphone, CheckCircle, ArrowRight, UserPlus, KeyRound } from 'lucide-react';
+import { Smartphone, Mail, CheckCircle, ArrowRight, ArrowLeft, KeyRound, Lock, UserRound } from 'lucide-react';
 import { API_BASE } from '../../lib/api';
+
+type Channel = 'phone' | 'email';
+type Step = 'select' | 'password' | 'otp' | 'set-password' | 'full-name' | 'reset-otp';
+
+async function parseError(response: Response, fallback: string): Promise<string> {
+  try {
+    const data = await response.json();
+    if (typeof data.detail === 'string') return data.detail;
+    if (Array.isArray(data.detail) && data.detail[0]?.msg) return data.detail[0].msg;
+  } catch {
+    // fall through to generic message
+  }
+  return fallback;
+}
 
 export default function AuthPage() {
   const router = useRouter();
-  const setAuth = useAuthStore((state) => state.setAuth);
+  const { setAuth, updateUser, token: storedToken } = useAuthStore();
 
-  const [phone, setPhone] = useState('+91');
-  const [otp, setOtp] = useState('');
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  
-  const [step, setStep] = useState(1); // 1: Phone, 2: OTP, 3: Profile Setup (if new)
+  const [channel, setChannel] = useState<Channel>('phone');
+  const [identifier, setIdentifier] = useState('');
+  const [step, setStep] = useState<Step>('select');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Handle phone submission
-  const handleSendOtp = async (e: React.FormEvent) => {
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [otp, setOtp] = useState('');
+  const [name, setName] = useState('');
+
+  const [pendingToken, setPendingToken] = useState<string | null>(null);
+
+  const channelLabel = channel === 'phone' ? 'phone number' : 'email address';
+
+  // Step 1: enter phone/email, decide whether to show password or OTP
+  const handleContinue = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    
-    if (!/^\+91\d{10}$/.test(phone)) {
-      setError('Please enter a valid 10-digit phone number with +91 country code.');
+
+    if (channel === 'phone' && !/^\+91\d{10}$/.test(identifier)) {
+      setError('Enter a valid 10-digit number with +91 country code.');
+      return;
+    }
+    if (channel === 'email' && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(identifier)) {
+      setError('Enter a valid email address.');
       return;
     }
 
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/auth/send-otp`, {
+      const checkRes = await fetch(`${API_BASE}/auth/check-account`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone })
+        body: JSON.stringify({ identifier, channel }),
       });
-      
-      if (response.ok) {
-        setStep(2);
-      } else {
-        // Fallback for development if backend not running
-        console.warn("Backend not running, simulating OTP dispatch.");
-        setStep(2);
+      if (!checkRes.ok) {
+        setError(await parseError(checkRes, 'Something went wrong. Please try again.'));
+        return;
       }
+      const check = await checkRes.json();
+
+      if (check.exists && check.has_password) {
+        setStep('password');
+        return;
+      }
+
+      const otpRes = await fetch(`${API_BASE}/auth/send-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier, channel }),
+      });
+      if (!otpRes.ok) {
+        setError(await parseError(otpRes, 'Could not send OTP. Please try again.'));
+        return;
+      }
+      setStep('otp');
     } catch (err) {
-      // Offline fallback
-      setStep(2);
+      setError('Could not reach the server. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Handle OTP verification
+  // Existing account: password login
+  const handlePasswordLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/login-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier, channel, password }),
+      });
+      if (!res.ok) {
+        setError(await parseError(res, 'Invalid credentials.'));
+        return;
+      }
+      const data = await res.json();
+      await loadProfileAndFinish(data.access_token);
+    } catch (err) {
+      setError('Could not reach the server. Please check your connection and try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier, channel }),
+      });
+      if (!res.ok) {
+        setError(await parseError(res, 'Could not send reset code.'));
+        return;
+      }
+      setStep('reset-otp');
+    } catch (err) {
+      setError('Could not reach the server. Please check your connection and try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // New (or password-less) account: verify OTP
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-
     if (otp.length !== 6) {
       setError('OTP must be exactly 6 digits.');
       return;
@@ -64,221 +144,400 @@ export default function AuthPage() {
 
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/auth/verify-otp`, {
+      const res = await fetch(`${API_BASE}/auth/verify-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, otp })
+        body: JSON.stringify({ identifier, channel, otp }),
       });
+      if (!res.ok) {
+        setError(await parseError(res, 'Invalid or expired OTP.'));
+        return;
+      }
+      const data = await res.json();
+      setPendingToken(data.access_token);
 
-      if (response.ok) {
-        const data = await response.json();
-        
-        // Fetch current user details or profile
-        const userRes = await fetch(`${API_BASE}/auth/me`, {
-          headers: { 'Authorization': `Bearer ${data.access_token}` }
-        });
-        
-        const userProfile = userRes.ok 
-          ? await userRes.json()
-          : { id: "dev-user-id", phone, phone_verified: true, email_verified: false, avg_rating: 5.0, rating_count: 1, total_listings: 0, total_matches: 0 };
-        
-        setAuth(userProfile, data.access_token);
-        
-        if (data.is_new_user) {
-          setStep(3);
-        } else {
-          router.push('/dashboard');
-        }
+      if (data.is_new_user || !data.has_password) {
+        await loadProfileAndFinish(data.access_token, { skipRedirect: true });
+        setStep('set-password');
       } else {
-        // Fallback for development
-        if (otp === '123456') {
-          const mockUser = {
-            id: "dev-user-id",
-            phone,
-            phone_verified: true,
-            email_verified: false,
-            avg_rating: 5.0,
-            rating_count: 1,
-            total_listings: 0,
-            total_matches: 0
-          };
-          setAuth(mockUser, "mock-jwt-token-value");
-          setStep(3); // Go to profile setup for simulation
-        } else {
-          setError('Invalid OTP code. Try "123456" for developer testing.');
-        }
+        await loadProfileAndFinish(data.access_token);
       }
     } catch (err) {
-      // Offline fallback
-      if (otp === '123456') {
-        const mockUser = {
-          id: "dev-user-id",
-          phone,
-          phone_verified: true,
-          email_verified: false,
-          avg_rating: 5.0,
-          rating_count: 1,
-          total_listings: 0,
-          total_matches: 0
-        };
-        setAuth(mockUser, "mock-jwt-token-value");
-        setStep(3);
-      } else {
-        setError('Connection error. Enter "123456" to bypass auth.');
-      }
+      setError('Could not reach the server. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Handle Profile Update
-  const handleProfileSetup = async (e: React.FormEvent) => {
+  // New account: set password
+  const handleSetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+
+    const activeToken = pendingToken || storedToken;
     setLoading(true);
-    
-    // Save locally and redirect
-    const userStore = useAuthStore.getState();
-    if (userStore.user) {
-      userStore.updateUser({ name: name || 'Indian Traveler', email });
-    }
-    
-    // Put API call to update profile
-    if (userStore.token) {
-      await fetch(`${API_BASE}/auth/me`, {
-        method: 'PUT',
-        headers: { 
+    try {
+      const res = await fetch(`${API_BASE}/auth/set-password`, {
+        method: 'POST',
+        headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${userStore.token}`
+          Authorization: `Bearer ${activeToken}`,
         },
-        body: JSON.stringify({ name, email })
-      }).catch(() => {});
+        body: JSON.stringify({ password, confirm_password: confirmPassword }),
+      });
+      if (!res.ok) {
+        setError(await parseError(res, 'Could not set password.'));
+        return;
+      }
+      setStep('full-name');
+    } catch (err) {
+      setError('Could not reach the server. Please check your connection and try again.');
+    } finally {
+      setLoading(false);
     }
-    
-    setLoading(false);
-    router.push('/dashboard');
+  };
+
+  // New account: full name, then done
+  const handleSetName = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (!name.trim()) {
+      setError('Please enter your full name.');
+      return;
+    }
+
+    const activeToken = pendingToken || storedToken;
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/me`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${activeToken}`,
+        },
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) {
+        setError(await parseError(res, 'Could not save your name.'));
+        return;
+      }
+      updateUser({ name });
+      router.push('/dashboard');
+    } catch (err) {
+      setError('Could not reach the server. Please check your connection and try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Forgot-password flow: verify OTP + set new password in one step
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (otp.length !== 6) {
+      setError('OTP must be exactly 6 digits.');
+      return;
+    }
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          identifier,
+          channel,
+          otp,
+          new_password: password,
+          confirm_password: confirmPassword,
+        }),
+      });
+      if (!res.ok) {
+        setError(await parseError(res, 'Could not reset password.'));
+        return;
+      }
+      setOtp('');
+      setPassword('');
+      setConfirmPassword('');
+      setStep('password');
+    } catch (err) {
+      setError('Could not reach the server. Please check your connection and try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetches the real profile and stores it; redirects unless skipRedirect (mid-registration)
+  const loadProfileAndFinish = async (accessToken: string, opts?: { skipRedirect?: boolean }) => {
+    const userRes = await fetch(`${API_BASE}/auth/me`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!userRes.ok) {
+      setError('Logged in, but could not load your profile. Please try again.');
+      return;
+    }
+    const userProfile = await userRes.json();
+    setAuth(userProfile, accessToken);
+
+    if (!opts?.skipRedirect) {
+      router.push('/dashboard');
+    }
   };
 
   return (
     <div className="max-w-md mx-auto my-16 px-6">
       <div className="glass-card p-8 shadow-2xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-blue-500/20 to-transparent rounded-bl-full pointer-events-none" />
-        
-        {step === 1 && (
-          <form onSubmit={handleSendOtp} className="space-y-6">
+
+        {error && (
+          <div className="mb-6 p-3 text-xs bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-lg">
+            {error}
+          </div>
+        )}
+
+        {step === 'select' && (
+          <form onSubmit={handleContinue} className="space-y-6">
             <div className="text-center space-y-2">
               <Smartphone className="w-10 h-10 text-blue-500 mx-auto" />
-              <h2 className="text-2xl font-black font-display">Verify Phone</h2>
-              <p className="text-xs text-slate-400">Enter your phone number to receive a 6-digit verification code.</p>
+              <h2 className="text-2xl font-black font-display">Log In or Sign Up</h2>
+              <p className="text-xs text-slate-400">Choose how you&apos;d like to continue.</p>
             </div>
 
-            {error && <div className="p-3 text-xs bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-lg">{error}</div>}
+            <div className="flex rounded-xl border border-white/10 overflow-hidden text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => { setChannel('phone'); setIdentifier(''); }}
+                className={`flex-1 py-2.5 flex items-center justify-center gap-1.5 transition ${channel === 'phone' ? 'bg-blue-600/20 text-blue-400' : 'text-slate-400 hover:bg-white/5'}`}
+              >
+                <Smartphone className="w-3.5 h-3.5" /> Phone
+              </button>
+              <button
+                type="button"
+                onClick={() => { setChannel('email'); setIdentifier(''); }}
+                className={`flex-1 py-2.5 flex items-center justify-center gap-1.5 transition ${channel === 'email' ? 'bg-blue-600/20 text-blue-400' : 'text-slate-400 hover:bg-white/5'}`}
+              >
+                <Mail className="w-3.5 h-3.5" /> Email
+              </button>
+            </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-400">Mobile Number</label>
-              <input 
-                type="text" 
-                placeholder="+919876543210"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+              <label className="text-xs font-semibold text-slate-400">
+                {channel === 'phone' ? 'Mobile Number' : 'Email Address'}
+              </label>
+              <input
+                type={channel === 'phone' ? 'text' : 'email'}
+                placeholder={channel === 'phone' ? '+919876543210' : 'you@example.com'}
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
                 className="w-full input-glass text-sm"
                 required
               />
             </div>
 
-            <button 
-              type="submit" 
-              disabled={loading}
-              className="w-full btn-primary flex items-center justify-center gap-2 text-sm py-3"
-            >
-              <span>{loading ? 'Sending...' : 'Send Verification OTP'}</span>
+            <button type="submit" disabled={loading} className="w-full btn-primary flex items-center justify-center gap-2 text-sm py-3">
+              <span>{loading ? 'Please wait...' : 'Continue'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
         )}
 
-        {step === 2 && (
-          <form onSubmit={handleVerifyOtp} className="space-y-6">
+        {step === 'password' && (
+          <form onSubmit={handlePasswordLogin} className="space-y-6">
             <div className="text-center space-y-2">
-              <KeyRound className="w-10 h-10 text-indigo-500 mx-auto" />
-              <h2 className="text-2xl font-black font-display">Enter OTP</h2>
-              <p className="text-xs text-slate-400">We&apos;ve sent a 6-digit code to {phone}</p>
+              <Lock className="w-10 h-10 text-blue-500 mx-auto" />
+              <h2 className="text-2xl font-black font-display">Enter Password</h2>
+              <p className="text-xs text-slate-400">Logging in as {identifier}</p>
             </div>
-
-            {error && <div className="p-3 text-xs bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-lg">{error}</div>}
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-400">6-Digit Code</label>
-              <input 
-                type="text" 
-                placeholder="Enter Code (e.g. 123456)"
-                value={otp}
-                onChange={(e) => setOtp(e.target.value)}
-                className="w-full input-glass text-center font-bold tracking-[0.75em] text-lg"
-                maxLength={6}
+              <label className="text-xs font-semibold text-slate-400">Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full input-glass text-sm"
                 required
               />
-              <span className="text-[10px] text-slate-500 block mt-1 text-center">Developer bypass code is <strong>123456</strong></span>
             </div>
 
-            <div className="flex gap-2">
-              <button 
-                type="button" 
-                onClick={() => setStep(1)} 
-                className="w-1/3 btn-secondary text-xs"
-              >
-                Back
+            <button type="submit" disabled={loading} className="w-full btn-primary flex items-center justify-center gap-2 text-sm py-3">
+              <span>{loading ? 'Logging in...' : 'Log In'}</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+
+            <div className="flex justify-between text-xs">
+              <button type="button" onClick={() => setStep('select')} className="text-slate-400 hover:text-slate-300 flex items-center gap-1">
+                <ArrowLeft className="w-3.5 h-3.5" /> Back
               </button>
-              <button 
-                type="submit" 
-                disabled={loading}
-                className="w-2/3 btn-primary text-xs py-3"
-              >
-                {loading ? 'Verifying...' : 'Verify & Continue'}
+              <button type="button" onClick={handleForgotPassword} className="text-blue-400 hover:text-blue-300 font-semibold">
+                Forgot password?
               </button>
             </div>
           </form>
         )}
 
-        {step === 3 && (
-          <form onSubmit={handleProfileSetup} className="space-y-6">
+        {step === 'otp' && (
+          <form onSubmit={handleVerifyOtp} className="space-y-6">
             <div className="text-center space-y-2">
-              <UserPlus className="w-10 h-10 text-emerald-500 mx-auto" />
-              <h2 className="text-2xl font-black font-display">Set Up Profile</h2>
-              <p className="text-xs text-slate-400">Complete your profile to build trust with buyers and sellers.</p>
+              <KeyRound className="w-10 h-10 text-indigo-500 mx-auto" />
+              <h2 className="text-2xl font-black font-display">Enter OTP</h2>
+              <p className="text-xs text-slate-400">We&apos;ve sent a 6-digit code to your {channelLabel}</p>
             </div>
 
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-400">Full Name</label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. Rahul Sharma"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full input-glass text-sm"
-                  required
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-400">Email Address (Optional)</label>
-                <input 
-                  type="email" 
-                  placeholder="e.g. rahul@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full input-glass text-sm"
-                />
-              </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-400">6-Digit Code</label>
+              <input
+                type="text"
+                placeholder="123456"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                className="w-full input-glass text-center font-bold tracking-[0.75em] text-lg"
+                maxLength={6}
+                required
+              />
             </div>
 
-            <button 
-              type="submit" 
-              disabled={loading}
-              className="w-full btn-primary flex items-center justify-center gap-2 text-sm py-3"
-            >
+            <button type="submit" disabled={loading} className="w-full btn-primary flex items-center justify-center gap-2 text-sm py-3">
               <CheckCircle className="w-4 h-4" />
-              <span>{loading ? 'Completing...' : 'Complete Profile Setup'}</span>
+              <span>{loading ? 'Verifying...' : 'Verify'}</span>
+            </button>
+
+            <button type="button" onClick={() => setStep('select')} className="text-xs text-slate-400 hover:text-slate-300 flex items-center gap-1">
+              <ArrowLeft className="w-3.5 h-3.5" /> Change {channel === 'phone' ? 'number' : 'email'}
+            </button>
+          </form>
+        )}
+
+        {step === 'set-password' && (
+          <form onSubmit={handleSetPassword} className="space-y-6">
+            <div className="text-center space-y-2">
+              <Lock className="w-10 h-10 text-blue-500 mx-auto" />
+              <h2 className="text-2xl font-black font-display">Set a Password</h2>
+              <p className="text-xs text-slate-400">At least 8 characters. You&apos;ll use this to log in next time.</p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-400">Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full input-glass text-sm"
+                required
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-400">Retype Password</label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="w-full input-glass text-sm"
+                required
+              />
+            </div>
+
+            <button type="submit" disabled={loading} className="w-full btn-primary flex items-center justify-center gap-2 text-sm py-3">
+              <span>{loading ? 'Saving...' : 'Continue'}</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </form>
+        )}
+
+        {step === 'full-name' && (
+          <form onSubmit={handleSetName} className="space-y-6">
+            <div className="text-center space-y-2">
+              <UserRound className="w-10 h-10 text-blue-500 mx-auto" />
+              <h2 className="text-2xl font-black font-display">What&apos;s your name?</h2>
+              <p className="text-xs text-slate-400">Shown to other users you match with.</p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-400">Full Name</label>
+              <input
+                type="text"
+                placeholder="e.g. Rahul Sharma"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full input-glass text-sm"
+                required
+              />
+            </div>
+
+            <button type="submit" disabled={loading} className="w-full btn-primary flex items-center justify-center gap-2 text-sm py-3">
+              <span>{loading ? 'Finishing up...' : 'Complete Setup'}</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </form>
+        )}
+
+        {step === 'reset-otp' && (
+          <form onSubmit={handleResetPassword} className="space-y-6">
+            <div className="text-center space-y-2">
+              <KeyRound className="w-10 h-10 text-indigo-500 mx-auto" />
+              <h2 className="text-2xl font-black font-display">Reset Password</h2>
+              <p className="text-xs text-slate-400">Enter the code sent to your {channelLabel} and choose a new password.</p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-400">6-Digit Code</label>
+              <input
+                type="text"
+                placeholder="123456"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                className="w-full input-glass text-center font-bold tracking-[0.75em] text-lg"
+                maxLength={6}
+                required
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-400">New Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full input-glass text-sm"
+                required
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-400">Retype New Password</label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="w-full input-glass text-sm"
+                required
+              />
+            </div>
+
+            <button type="submit" disabled={loading} className="w-full btn-primary flex items-center justify-center gap-2 text-sm py-3">
+              <span>{loading ? 'Saving...' : 'Reset Password'}</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+
+            <button type="button" onClick={() => setStep('password')} className="text-xs text-slate-400 hover:text-slate-300 flex items-center gap-1">
+              <ArrowLeft className="w-3.5 h-3.5" /> Back to login
             </button>
           </form>
         )}

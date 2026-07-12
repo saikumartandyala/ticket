@@ -3,17 +3,28 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import and_, or_
+from sqlalchemy.orm import selectinload
 from typing import List, Optional
 
 from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.models import User, TicketListing, Match, Notification, SeekerAlert, Review, Category, Message
 from app.schemas import (
-    MatchResponse, SeekerAlertCreate, SeekerAlertResponse, 
+    MatchResponse, SeekerAlertCreate, SeekerAlertResponse,
     ReviewCreate, ReviewResponse, CategoryBase, MessageResponse
 )
 
 router = APIRouter()
+
+# MatchResponse nests listing (which itself nests owner/category) plus
+# seeker/transferor — all must be eager-loaded with an async session, or
+# Pydantic crashes lazy-loading them outside the request's async context.
+MATCH_EAGER_LOAD = (
+    selectinload(Match.listing).selectinload(TicketListing.owner),
+    selectinload(Match.listing).selectinload(TicketListing.category),
+    selectinload(Match.seeker),
+    selectinload(Match.transferor),
+)
 
 # ==========================================
 # MATCHES ENDPOINTS
@@ -27,7 +38,7 @@ async def get_matches(
     """
     Get all matches where current user is either seeker or transferor.
     """
-    stmt = select(Match).where(
+    stmt = select(Match).options(*MATCH_EAGER_LOAD).where(
         or_(
             Match.seeker_id == current_user.id,
             Match.transferor_id == current_user.id
@@ -46,7 +57,7 @@ async def get_match(
     """
     Get details of a match.
     """
-    result = await db.execute(select(Match).where(Match.id == id))
+    result = await db.execute(select(Match).options(*MATCH_EAGER_LOAD).where(Match.id == id))
     match = result.scalar_one_or_none()
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
@@ -65,7 +76,7 @@ async def accept_match(
     """
     Transferor accepts a seeker's interest. Sets status to 'accepted'.
     """
-    result = await db.execute(select(Match).where(Match.id == id))
+    result = await db.execute(select(Match).options(*MATCH_EAGER_LOAD).where(Match.id == id))
     match = result.scalar_one_or_none()
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
@@ -110,7 +121,7 @@ async def decline_match(
     """
     Transferor declines a seeker's interest.
     """
-    result = await db.execute(select(Match).where(Match.id == id))
+    result = await db.execute(select(Match).options(*MATCH_EAGER_LOAD).where(Match.id == id))
     match = result.scalar_one_or_none()
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
@@ -147,7 +158,7 @@ async def reveal_contact(
     """
     Reveal contact details. Both parties can see it once match is in 'accepted' or 'contact_revealed'.
     """
-    result = await db.execute(select(Match).where(Match.id == id))
+    result = await db.execute(select(Match).options(*MATCH_EAGER_LOAD).where(Match.id == id))
     match = result.scalar_one_or_none()
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
@@ -186,7 +197,7 @@ async def confirm_transfer(
     """
     Confirm that the physical ticket transfer has completed successfully.
     """
-    result = await db.execute(select(Match).where(Match.id == id))
+    result = await db.execute(select(Match).options(*MATCH_EAGER_LOAD).where(Match.id == id))
     match = result.scalar_one_or_none()
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
@@ -418,7 +429,7 @@ async def get_match_messages(
     Get message history for a given match.
     """
     # Verify user is part of the match
-    match_res = await db.execute(select(Match).where(Match.id == id))
+    match_res = await db.execute(select(Match).options(*MATCH_EAGER_LOAD).where(Match.id == id))
     match = match_res.scalar_one_or_none()
     if not match or (match.seeker_id != current_user.id and match.transferor_id != current_user.id):
         raise HTTPException(status_code=403, detail="Not authorized to access these messages")

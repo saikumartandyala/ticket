@@ -1,8 +1,9 @@
 import { create } from 'zustand';
+import { API_BASE } from '../lib/api';
 
 interface User {
   id: string;
-  phone: string;
+  phone?: string;
   name?: string;
   email?: string;
   avatar_url?: string;
@@ -68,7 +69,7 @@ export const useAuthStore = create<AuthState>((set) => {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         // Call backend API logout to clear httpOnly cookies
-        fetch('/api/v1/auth/logout', { method: 'POST' }).catch(() => {});
+        fetch(`${API_BASE}/auth/logout`, { method: 'POST' }).catch(() => {});
       }
       set({ user: null, token: null, isAuthenticated: false });
     }

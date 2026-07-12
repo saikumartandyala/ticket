@@ -1,37 +1,43 @@
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy import (
-    Column, String, Boolean, Integer, Numeric, DateTime, 
-    ForeignKey, JSON, Text, Date, Time, UniqueConstraint
+    Column, String, Boolean, Integer, Numeric, DateTime,
+    ForeignKey, JSON, Text, Date, Time, UniqueConstraint, CheckConstraint
 )
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 
 class User(Base):
     __tablename__ = "users"
-    
+    __table_args__ = (
+        CheckConstraint("phone IS NOT NULL OR email IS NOT NULL", name="ck_user_identifier_required"),
+    )
+
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    phone = Column(String(15), unique=True, nullable=False, index=True)
+    # A user can register with either phone or email (or both) — at least
+    # one is required, enforced by the CheckConstraint above.
+    phone = Column(String(15), unique=True, nullable=True, index=True)
     email = Column(String(255), unique=True, nullable=True, index=True)
+    password_hash = Column(String(255), nullable=True)
     name = Column(String(100), nullable=True)
     avatar_url = Column(Text, nullable=True)
-    
+
     phone_verified = Column(Boolean, default=False)
     email_verified = Column(Boolean, default=False)
-    
+
     total_listings = Column(Integer, default=0)
     total_matches = Column(Integer, default=0)
     avg_rating = Column(Numeric(3, 2), default=0.00)
     rating_count = Column(Integer, default=0)
-    
+
     notification_prefs = Column(JSON, default=lambda: {"sms": True, "email": True, "push": True})
-    
+
     is_active = Column(Boolean, default=True)
     is_banned = Column(Boolean, default=False)
     last_active_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-    
+
     # Relationships
     listings = relationship("TicketListing", foreign_keys="[TicketListing.user_id]", back_populates="owner")
     alerts = relationship("SeekerAlert", back_populates="user")
@@ -39,11 +45,13 @@ class User(Base):
 
 class OTPSession(Base):
     __tablename__ = "otp_sessions"
-    
+
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    phone = Column(String(15), nullable=False, index=True)
+    # Holds either a phone number or an email address, depending on channel.
+    identifier = Column(String(255), nullable=False, index=True)
+    channel = Column(String(10), nullable=False, default="phone")  # 'phone' | 'email'
     otp_hash = Column(String(255), nullable=False)
-    purpose = Column(String(50), default="login")
+    purpose = Column(String(50), default="login")  # 'login' | 'reset'
     attempts = Column(Integer, default=0)
     is_used = Column(Boolean, default=False)
     expires_at = Column(DateTime, nullable=False)

@@ -75,24 +75,45 @@ export default function PostTicketPage() {
     setStep(3);
   };
 
-  // Mock Photo Upload Trigger
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
+
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Photo must be under 5MB.');
+      return;
+    }
+
     setUploading(true);
     setError('');
 
-    // Simulate upload latency
-    setTimeout(() => {
-      setPhotoUrl('/api/v1/static/uploads/mock-uploaded-ticket.jpg');
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch(`${API_BASE}/listings/upload-photo`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        setError('Photo upload failed. Please try a different image.');
+        return;
+      }
+
+      const data = await response.json();
+      setPhotoUrl(data.url);
+    } catch (err) {
+      setError('Could not reach the server to upload the photo.');
+    } finally {
       setUploading(false);
-    }, 1500);
+    }
   };
 
   const handleNextStep3 = () => {
-    if (!photoUrl) {
-      setError('A photo upload of the ticket is required to verify ownership.');
-      return;
-    }
+    setError('');
+    // Photo is optional — helps buyers trust the listing but isn't required.
     // Pre-seed asking price to 50% of original
     if (originalPrice > 0 && askingPrice === 0) {
       setAskingPrice(Math.round(originalPrice * 0.5));
@@ -138,14 +159,13 @@ export default function PostTicketPage() {
       seat_details: { coach, seat: seatNum, class: seatClass },
       original_price: originalPrice,
       asking_price: askingPrice,
-      ticket_photos: [photoUrl],
-      pnr_last_four: "1234"
+      ticket_photos: photoUrl ? [photoUrl] : [],
     };
 
     try {
       const response = await fetch(`${API_BASE}/listings`, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
@@ -155,13 +175,18 @@ export default function PostTicketPage() {
       if (response.ok) {
         setStep(6);
       } else {
-        const errData = await response.json();
-        // Fallback simulate listing success for local test run
-        setStep(6);
+        const errData = await response.json().catch(() => null);
+        const detail = errData?.detail;
+        setError(
+          typeof detail === 'string'
+            ? detail
+            : Array.isArray(detail) && detail[0]?.msg
+            ? detail[0].msg
+            : 'Could not publish your listing. Please try again.'
+        );
       }
     } catch (err) {
-      // Offline fallback
-      setStep(6);
+      setError('Could not reach the server. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -331,8 +356,8 @@ export default function PostTicketPage() {
         <div className="space-y-6">
           <div className="text-center space-y-2">
             <Upload className="w-10 h-10 text-indigo-500 mx-auto" />
-            <h2 className="text-lg font-black font-display">Upload Ticket Screenshot</h2>
-            <p className="text-xs text-slate-400">Required to confirm the authenticity of your ticket listing.</p>
+            <h2 className="text-lg font-black font-display">Upload Ticket Screenshot (Optional)</h2>
+            <p className="text-xs text-slate-400">Not required, but a screenshot of your ticket helps buyers trust your listing.</p>
           </div>
 
           <div className="border-2 border-dashed border-white/10 rounded-2xl p-8 text-center bg-slate-900/40 relative">
@@ -362,7 +387,7 @@ export default function PostTicketPage() {
 
           <div className="flex gap-3 justify-end">
             <button onClick={() => setStep(2)} className="btn-secondary text-xs">Back</button>
-            <button onClick={handleNextStep3} className="btn-primary text-xs">Continue</button>
+            <button onClick={handleNextStep3} disabled={uploading} className="btn-primary text-xs">Continue</button>
           </div>
         </div>
       )}
