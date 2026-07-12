@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     
     # DB Connections (Default fallback to local SQLite for easier local running/testing)
     DATABASE_URL: str = "sqlite+aiosqlite:///./lastminutepass.db"
+    DATABASE_POOL_SIZE: int = 10
+    DATABASE_MAX_OVERFLOW: int = 20
     REDIS_URL: Optional[str] = None  # e.g., redis://localhost:6379/0
     
     # Search Engine

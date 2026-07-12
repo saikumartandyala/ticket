@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Calendar, Clock, MapPin, Star, ShieldCheck, Heart, Share2, AlertTriangle, ChevronRight, MessageSquare } from 'lucide-react';
 import Link from 'next/link';
 import { useAuthStore } from '../../../store/authStore';
+import { API_BASE } from '../../../lib/api';
 
 const MOCK_LISTINGS = [
   {
@@ -85,7 +86,7 @@ export default function TicketDetailPage() {
 
   useEffect(() => {
     // Attempt fetch from backend
-    fetch(`http://localhost:8000/api/v1/listings/${id}`)
+    fetch(`${API_BASE}/listings/${id}`)
       .then(res => {
         if (res.ok) return res.json();
         throw new Error('Fallback');
@@ -111,7 +112,7 @@ export default function TicketDetailPage() {
 
     setInterestSubmitting(true);
     try {
-      const response = await fetch(`http://localhost:8000/api/v1/listings/${id}/interest`, {
+      const response = await fetch(`${API_BASE}/listings/${id}/interest`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',

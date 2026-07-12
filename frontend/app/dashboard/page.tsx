@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuthStore } from '../../store/authStore';
 import { Ticket, User, MessageSquare, Bell, Heart, Star, ShieldCheck, Mail, Phone, Plus, MessageCircle, RefreshCw, Trash } from 'lucide-react';
 import Link from 'next/link';
+import { API_BASE } from '../../lib/api';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -24,21 +25,21 @@ export default function DashboardPage() {
     
     try {
       // 1. Fetch user's listings
-      const listingsRes = await fetch('http://localhost:8000/api/v1/listings');
+      const listingsRes = await fetch(`${API_BASE}/listings`);
       const allListings = listingsRes.ok ? await listingsRes.json() : [];
       // Filter ones created by user
       const userListings = allListings.filter((l: any) => l.user_id === user?.id);
       setListings(userListings);
 
       // 2. Fetch matches
-      const matchesRes = await fetch('http://localhost:8000/api/v1/matches', {
+      const matchesRes = await fetch(`${API_BASE}/matches`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const userMatches = matchesRes.ok ? await matchesRes.json() : [];
       setMatches(userMatches);
 
       // 3. Fetch alerts
-      const alertsRes = await fetch('http://localhost:8000/api/v1/alerts', {
+      const alertsRes = await fetch(`${API_BASE}/alerts`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const userAlerts = alertsRes.ok ? await alertsRes.json() : [];
@@ -77,7 +78,7 @@ export default function DashboardPage() {
   // Decline Interest
   const handleDeclineMatch = async (matchId: string) => {
     try {
-      await fetch(`http://localhost:8000/api/v1/matches/${matchId}/decline`, {
+      await fetch(`${API_BASE}/matches/${matchId}/decline`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -91,7 +92,7 @@ export default function DashboardPage() {
   // Accept Interest
   const handleAcceptMatch = async (matchId: string) => {
     try {
-      await fetch(`http://localhost:8000/api/v1/matches/${matchId}/accept`, {
+      await fetch(`${API_BASE}/matches/${matchId}/accept`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -105,7 +106,7 @@ export default function DashboardPage() {
   // Delete Alert
   const handleDeleteAlert = async (alertId: string) => {
     try {
-      await fetch(`http://localhost:8000/api/v1/alerts/${alertId}`, {
+      await fetch(`${API_BASE}/alerts/${alertId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });

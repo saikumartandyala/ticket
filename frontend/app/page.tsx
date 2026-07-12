@@ -7,6 +7,7 @@ import { TicketCard } from '../components/TicketCard';
 import DotField from '../components/react-bits/DotField';
 import GlassSurface from '../components/react-bits/GlassSurface';
 import MagicBento, { type BentoCard } from '../components/react-bits/MagicBento';
+import { API_BASE } from '../lib/api';
 
 // Rich Mock Data for fallback when API is not running
 const MOCK_LISTINGS = [
@@ -78,7 +79,7 @@ export default function LandingPage() {
 
   useEffect(() => {
     // Attempt to fetch listings from backend
-    fetch('http://localhost:8000/api/v1/listings')
+    fetch(`${API_BASE}/listings`)
       .then(res => {
         if (res.ok) return res.json();
         throw new Error('Not running');

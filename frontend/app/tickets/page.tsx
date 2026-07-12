@@ -4,6 +4,7 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Search, MapPin, Calendar, Tag, BellRing, Filter, SlidersHorizontal, Trash2 } from 'lucide-react';
 import { TicketCard } from '../../components/TicketCard';
+import { API_BASE } from '../../lib/api';
 
 // Rich Mock Data for local fallback
 const MOCK_LISTINGS = [
@@ -84,7 +85,7 @@ function BrowseTicketsContent() {
 
   useEffect(() => {
     // Build query URL based on filters
-    let url = 'http://localhost:8000/api/v1/listings';
+    let url = `${API_BASE}/listings`;
     const params = new URLSearchParams();
     if (query) params.append('query', query);
     if (origin) params.append('origin', origin);
@@ -150,7 +151,7 @@ function BrowseTicketsContent() {
     }
     
     try {
-      const response = await fetch('http://localhost:8000/api/v1/alerts', {
+      const response = await fetch(`${API_BASE}/alerts`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',

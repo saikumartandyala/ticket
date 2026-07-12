@@ -6,12 +6,14 @@ from sqlalchemy.future import select
 from sqlalchemy import and_, or_, func
 from typing import List, Optional
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.models import User, TicketListing, Category, Match, Notification
 from app.schemas import ListingCreate, ListingResponse, ExpressInterestRequest, MatchResponse
 from app.services.storage_service import upload_ticket_photo
 from app.services.matching_service import check_seeker_alerts_for_listing
+from app.services import search_service
 
 router = APIRouter()
 
@@ -121,10 +123,19 @@ async def create_listing(
     
     await db.commit()
     await db.refresh(new_listing)
-    
-    # Fire off background matching check
-    await check_seeker_alerts_for_listing(new_listing.id, db)
-    
+
+    # Fire off background matching check — via Celery when a broker is
+    # configured (production/full stack), otherwise run inline so local dev
+    # without Redis still gets alerts matched synchronously.
+    if settings.REDIS_URL:
+        from app.workers.match_worker import check_seeker_alerts
+        check_seeker_alerts.delay(new_listing.id)
+    else:
+        await check_seeker_alerts_for_listing(new_listing.id, db)
+
+    # Index into MeiliSearch when configured (no-op otherwise)
+    await search_service.index_listing(new_listing)
+
     # Query with relations to return full schema representation
     result = await db.execute(select(TicketListing).where(TicketListing.id == new_listing.id))
     return result.scalar_one()
@@ -163,6 +174,9 @@ async def delete_listing(
         
     listing.status = "cancelled"
     await db.commit()
+
+    await search_service.delete_listing_from_index(id)
+
     return {"message": "Listing cancelled successfully"}
 
 @router.post("/{id}/interest", response_model=MatchResponse)

@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Train, Bus, Landmark, Sparkles, Check, ChevronRight, ChevronLeft, Upload, AlertCircle, BadgeAlert } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
+import { API_BASE } from '../../lib/api';
 
 export default function PostTicketPage() {
   const router = useRouter();
@@ -142,7 +143,7 @@ export default function PostTicketPage() {
     };
 
     try {
-      const response = await fetch('http://localhost:8000/api/v1/listings', {
+      const response = await fetch(`${API_BASE}/listings`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',

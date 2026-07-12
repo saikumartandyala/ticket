@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '../../store/authStore';
 import { Smartphone, CheckCircle, ArrowRight, UserPlus, KeyRound } from 'lucide-react';
+import { API_BASE } from '../../lib/api';
 
 export default function AuthPage() {
   const router = useRouter();
@@ -30,7 +31,7 @@ export default function AuthPage() {
 
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/api/v1/auth/send-otp', {
+      const response = await fetch(`${API_BASE}/auth/send-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone })
@@ -63,7 +64,7 @@ export default function AuthPage() {
 
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/api/v1/auth/verify-otp', {
+      const response = await fetch(`${API_BASE}/auth/verify-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone, otp })
@@ -73,7 +74,7 @@ export default function AuthPage() {
         const data = await response.json();
         
         // Fetch current user details or profile
-        const userRes = await fetch('http://localhost:8000/api/v1/auth/me', {
+        const userRes = await fetch(`${API_BASE}/auth/me`, {
           headers: { 'Authorization': `Bearer ${data.access_token}` }
         });
         
@@ -143,7 +144,7 @@ export default function AuthPage() {
     
     // Put API call to update profile
     if (userStore.token) {
-      await fetch('http://localhost:8000/api/v1/auth/me', {
+      await fetch(`${API_BASE}/auth/me`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',

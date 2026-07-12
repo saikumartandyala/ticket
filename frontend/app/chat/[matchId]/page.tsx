@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useAuthStore } from '../../../store/authStore';
 import { Send, ArrowLeft, ShieldAlert, Phone, Copy, Check, CheckCheck } from 'lucide-react';
 import Link from 'next/link';
+import { API_BASE, WS_BASE } from '../../../lib/api';
 
 export default function ChatRoomPage() {
   const { matchId } = useParams();
@@ -39,7 +40,7 @@ export default function ChatRoomPage() {
     }
 
     // 1. Fetch match info
-    fetch(`http://localhost:8000/api/v1/matches/${matchId}`, {
+    fetch(`${API_BASE}/matches/${matchId}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     })
       .then(res => {
@@ -68,7 +69,7 @@ export default function ChatRoomPage() {
       });
 
     // 2. Fetch messages
-    fetch(`http://localhost:8000/api/v1/matches/${matchId}/messages`, {
+    fetch(`${API_BASE}/matches/${matchId}/messages`, {
       headers: { 'Authorization': `Bearer ${token}` }
     })
       .then(res => {
@@ -87,7 +88,7 @@ export default function ChatRoomPage() {
       });
 
     // 3. Connect to WebSocket
-    const wsUrl = `ws://localhost:8000/api/v1/ws/chat/${matchId}?token=${token}`;
+    const wsUrl = `${WS_BASE}/ws/chat/${matchId}?token=${token}`;
     const ws = new WebSocket(wsUrl);
     socketRef.current = ws;
 
@@ -127,7 +128,7 @@ export default function ChatRoomPage() {
 
   const handleRevealContact = async () => {
     try {
-      const response = await fetch(`http://localhost:8000/api/v1/matches/${matchId}/reveal`, {
+      const response = await fetch(`${API_BASE}/matches/${matchId}/reveal`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -157,7 +158,7 @@ export default function ChatRoomPage() {
 
   const handleConfirmTransfer = async () => {
     try {
-      const response = await fetch(`http://localhost:8000/api/v1/matches/${matchId}/confirm`, {
+      const response = await fetch(`${API_BASE}/matches/${matchId}/confirm`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });

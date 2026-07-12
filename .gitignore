@@ -1,3 +1,6 @@
 /.antigravitycli
 /.claude
 /venv
+.env
+backend/.env
+frontend/.env*.local
