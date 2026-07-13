@@ -149,7 +149,9 @@ export default function TicketDetailPage() {
   const savingsPct = Math.round((savings / parseFloat(listing.original_price)) * 100);
 
   return (
-    <div className="max-w-7xl mx-auto px-6 md:px-12 py-10">
+    <div className="relative">
+      <div className="absolute top-0 left-0 right-0 h-[500px] hero-beam" />
+      <div className="relative max-w-7xl mx-auto px-6 md:px-12 py-10">
       {/* Breadcrumbs */}
       <div className="flex items-center gap-2 text-xs text-slate-500 mb-8 font-semibold">
         <Link href="/" className="hover:text-slate-300">Home</Link>
@@ -191,9 +193,9 @@ export default function TicketDetailPage() {
 
               {/* Dotted Tear Marks Simulation */}
               <div className="relative my-6 flex items-center justify-between">
-                <div className="absolute -left-10 w-6 h-6 bg-[#030510] rounded-full border-r border-white/5" />
+                <div className="absolute -left-10 w-6 h-6 bg-[#050308] rounded-full border-r border-white/5" />
                 <div className="w-full border-t-2 border-dashed border-white/10" />
-                <div className="absolute -right-10 w-6 h-6 bg-[#030510] rounded-full border-l border-white/5" />
+                <div className="absolute -right-10 w-6 h-6 bg-[#050308] rounded-full border-l border-white/5" />
               </div>
 
               {/* Travel / Venue Details */}
@@ -201,7 +203,7 @@ export default function TicketDetailPage() {
                 <div>
                   <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Departure / Event Date</span>
                   <div className="flex items-center gap-2 mt-1 text-slate-200">
-                    <Calendar className="w-4.5 h-4.5 text-blue-400" />
+                    <Calendar className="w-4.5 h-4.5 text-violet-400" />
                     <span className="font-semibold">{listing.event_date}</span>
                   </div>
                 </div>
@@ -210,7 +212,7 @@ export default function TicketDetailPage() {
                   <div>
                     <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Departure Time</span>
                     <div className="flex items-center gap-2 mt-1 text-slate-200">
-                      <Clock className="w-4.5 h-4.5 text-indigo-400" />
+                      <Clock className="w-4.5 h-4.5 text-fuchsia-400" />
                       <span className="font-semibold">{listing.departure_time.substring(0, 5)}</span>
                     </div>
                   </div>
@@ -240,7 +242,7 @@ export default function TicketDetailPage() {
         {/* RIGHT COLUMN - Price & Seller Card */}
         <div className="lg:col-span-5 space-y-6">
           {/* PRICING & SELLER ACTION */}
-          <div className="glass-card p-6 space-y-6">
+          <div className="glow-card p-6 space-y-6">
             <div className="flex justify-between items-center">
               <div>
                 <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Original Price</span>
@@ -250,7 +252,7 @@ export default function TicketDetailPage() {
                 <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full">
                   Save {savingsPct}%
                 </span>
-                <span className="text-3xl font-black bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent block mt-1">
+                <span className="text-3xl font-black bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent block mt-1">
                   ₹{Math.round(parseFloat(listing.asking_price))}
                 </span>
               </div>
@@ -288,10 +290,10 @@ export default function TicketDetailPage() {
           </div>
 
           {/* SELLER DETAILS */}
-          <div className="glass-card p-6 space-y-4">
+          <div className="glow-card p-6 space-y-4">
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Seller Information</h3>
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-full bg-blue-600/20 border border-blue-500/40 text-blue-300 text-sm font-black flex items-center justify-center">
+              <div className="w-12 h-12 rounded-full bg-violet-600/20 border border-violet-500/40 text-violet-300 text-sm font-black flex items-center justify-center">
                 {listing.owner.name[0].toUpperCase()}
               </div>
               <div>
@@ -326,6 +328,7 @@ export default function TicketDetailPage() {
             </ul>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

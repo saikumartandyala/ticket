@@ -52,8 +52,8 @@ export const TicketCard: React.FC<TicketCardProps> = ({ listing }) => {
       backgroundColor="#0d1117"
       borderRadius={16}
       glowRadius={28}
-      colors={isUrgent ? ['#f59e0b', '#ef4444', '#f59e0b'] : ['#3b82f6', '#8b5cf6', '#22d3ee']}
-      glowColor={isUrgent ? '38 92 60' : '217 91 60'}
+      colors={isUrgent ? ['#f59e0b', '#ef4444', '#f59e0b'] : ['#a855f7', '#7c3aed', '#c084fc']}
+      glowColor={isUrgent ? '38 92 60' : '272 91 65'}
       className={isUrgent ? 'animate-pulse' : ''}
     >
       <div className="relative rounded-2xl flex flex-col justify-between h-[360px] select-none">
@@ -73,7 +73,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({ listing }) => {
           
           <div className="flex flex-col items-end">
             <span className="text-[10px] text-slate-400 font-semibold tracking-wider uppercase">Asking Price</span>
-            <span className="text-xl font-bold bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">₹{Math.round(parseFloat(listing.asking_price))}</span>
+            <span className="text-xl font-bold bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">₹{Math.round(parseFloat(listing.asking_price))}</span>
             <span className="text-[10px] text-slate-500 line-through">₹{Math.round(parseFloat(listing.original_price))}</span>
           </div>
         </div>
@@ -86,7 +86,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({ listing }) => {
                 <h3 className="text-lg font-bold text-slate-100">{listing.origin_city}</h3>
                 <span className="text-xs text-slate-400">Origin</span>
               </div>
-              <ArrowRight className="w-4 h-4 text-blue-500 mt-1" />
+              <ArrowRight className="w-4 h-4 text-violet-500 mt-1" />
               <div>
                 <h3 className="text-lg font-bold text-slate-100">{listing.destination_city}</h3>
                 <span className="text-xs text-slate-400">Destination</span>
@@ -105,20 +105,20 @@ export const TicketCard: React.FC<TicketCardProps> = ({ listing }) => {
 
         {/* Divider dotted line simulation for ticket look */}
         <div className="relative my-3 flex items-center justify-between">
-          <div className="absolute -left-7 w-4 h-4 bg-[#030510] rounded-full border-r border-white/5" />
+          <div className="absolute -left-7 w-4 h-4 bg-[#050308] rounded-full border-r border-white/5" />
           <div className="w-full border-t border-dashed border-white/10" />
-          <div className="absolute -right-7 w-4 h-4 bg-[#030510] rounded-full border-l border-white/5" />
+          <div className="absolute -right-7 w-4 h-4 bg-[#050308] rounded-full border-l border-white/5" />
         </div>
 
         {/* Date and Time Details */}
         <div className="flex justify-between items-center text-xs text-slate-300">
           <div className="flex items-center gap-1.5">
-            <Calendar className="w-4 h-4 text-blue-400" />
+            <Calendar className="w-4 h-4 text-violet-400" />
             <span>{listing.event_date}</span>
           </div>
           {listing.departure_time && (
             <div className="flex items-center gap-1.5">
-              <Clock className="w-4 h-4 text-indigo-400" />
+              <Clock className="w-4 h-4 text-fuchsia-400" />
               <span>{listing.departure_time.substring(0, 5)}</span>
             </div>
           )}

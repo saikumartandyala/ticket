@@ -29,7 +29,8 @@ class Settings(BaseSettings):
     AWS_SECRET_ACCESS_KEY: Optional[str] = None
     
     MSG91_API_KEY: Optional[str] = None
-    MSG91_TEMPLATE_ID: Optional[str] = None
+    MSG91_TEMPLATE_ID: Optional[str] = None  # SMS OTP template (not currently used - email only)
+    MSG91_EMAIL_TEMPLATE_ID: Optional[str] = None  # Email OTP template, from the MSG91 dashboard
     SENDGRID_API_KEY: Optional[str] = None
     EMAIL_FROM: str = "noreply@lastminutepass.in"
     

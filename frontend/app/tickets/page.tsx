@@ -178,13 +178,15 @@ function BrowseTicketsContent() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-6 md:px-12 py-10 grid grid-cols-1 lg:grid-cols-12 gap-8">
+    <div className="relative">
+      <div className="absolute top-0 left-0 right-0 h-[500px] hero-beam" />
+      <div className="relative max-w-7xl mx-auto px-6 md:px-12 py-10 grid grid-cols-1 lg:grid-cols-12 gap-8">
       {/* FILTER SIDEBAR */}
       <aside className="lg:col-span-4 space-y-6">
-        <div className="glass-card p-6 space-y-6">
+        <div className="glow-card p-6 space-y-6">
           <div className="flex justify-between items-center pb-4 border-b border-white/5">
             <h2 className="font-black font-display text-lg flex items-center gap-2">
-              <Filter className="w-5 h-5 text-blue-400" />
+              <Filter className="w-5 h-5 text-violet-400" />
               <span>Filters</span>
             </h2>
             <button 
@@ -217,7 +219,7 @@ function BrowseTicketsContent() {
             <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
-              className="w-full bg-slate-900/60 text-slate-300 rounded-xl px-3.5 py-3 border border-white/5 text-sm focus:border-blue-500 outline-none"
+              className="w-full bg-slate-900/60 text-slate-300 rounded-xl px-3.5 py-3 border border-white/5 text-sm focus:border-violet-500 outline-none"
             >
               <option value="all">🔍 All Categories</option>
               <option value="train">🚂 Train Tickets</option>
@@ -270,7 +272,7 @@ function BrowseTicketsContent() {
           <div className="space-y-3">
             <div className="flex justify-between items-center text-xs">
               <span className="font-semibold text-slate-400">Max Budget</span>
-              <span className="font-bold text-blue-400">₹{maxPrice}</span>
+              <span className="font-bold text-violet-400">₹{maxPrice}</span>
             </div>
             <input 
               type="range" 
@@ -279,7 +281,7 @@ function BrowseTicketsContent() {
               step={100}
               value={maxPrice}
               onChange={(e) => setMaxPrice(parseInt(e.target.value))}
-              className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
+              className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-violet-500"
             />
             <div className="flex justify-between text-[10px] text-slate-600">
               <span>₹300</span>
@@ -304,7 +306,7 @@ function BrowseTicketsContent() {
             ))}
           </div>
         ) : (
-          <div className="glass-card p-12 text-center space-y-6 flex flex-col items-center justify-center">
+          <div className="glow-card p-12 text-center space-y-6 flex flex-col items-center justify-center">
             <div className="w-16 h-16 rounded-full bg-slate-900 flex items-center justify-center text-slate-500 text-3xl">🪑</div>
             <div className="space-y-2">
               <h3 className="text-lg font-bold text-slate-200">No Tickets Found</h3>
@@ -329,6 +331,7 @@ function BrowseTicketsContent() {
           </div>
         )}
       </main>
+      </div>
     </div>
   );
 }

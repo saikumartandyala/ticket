@@ -180,7 +180,9 @@ export default function ChatRoomPage() {
   const isSeller = match.transferor_id === user?.id;
 
   return (
-    <div className="max-w-4xl mx-auto my-6 px-6 h-[80vh] flex flex-col justify-between glass-card relative overflow-hidden">
+    <div className="relative">
+      <div className="absolute top-0 left-0 right-0 h-[400px] hero-beam" />
+      <div className="relative max-w-4xl mx-auto my-6 px-6 h-[80vh] flex flex-col justify-between glow-card overflow-hidden">
       {/* HEADER */}
       <header className="py-4 border-b border-white/5 flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -189,7 +191,7 @@ export default function ChatRoomPage() {
           </Link>
           <div>
             <h2 className="font-bold text-sm text-slate-200">{otherUser?.name || 'Partner'}</h2>
-            <span className="text-[10px] text-blue-400 font-semibold tracking-wide">
+            <span className="text-[10px] text-violet-400 font-semibold tracking-wide">
               Regarding: {match.listing.title} · ₹{Math.round(parseFloat(match.listing.asking_price))}
             </span>
           </div>
@@ -230,14 +232,14 @@ export default function ChatRoomPage() {
             >
               <div className={`p-3.5 rounded-2xl text-xs ${
                 isOwnMessage 
-                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-tr-none' 
+                  ? 'bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white rounded-tr-none'
                   : 'bg-slate-900/60 border border-white/5 text-slate-300 rounded-tl-none'
               }`}>
                 {m.content}
               </div>
               <div className="flex items-center gap-1 text-[8px] text-slate-500 font-medium">
                 <span>{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                {isOwnMessage && <CheckCheck className="w-3 h-3 text-blue-500" />}
+                {isOwnMessage && <CheckCheck className="w-3 h-3 text-violet-500" />}
               </div>
             </div>
           );
@@ -248,9 +250,9 @@ export default function ChatRoomPage() {
       {/* REVEAL PHONE BANNER ACTION */}
       <div className="p-4 border-t border-white/5 bg-slate-950/40 space-y-3">
         {contactRevealed ? (
-          <div className="bg-blue-500/10 border border-blue-500/20 text-blue-400 p-3 rounded-xl flex items-center justify-between text-xs font-semibold">
+          <div className="bg-violet-500/10 border border-violet-500/20 text-violet-400 p-3 rounded-xl flex items-center justify-between text-xs font-semibold">
             <div className="flex items-center gap-2">
-              <Phone className="w-4 h-4 text-blue-400" />
+              <Phone className="w-4 h-4 text-violet-400" />
               <span>Contact Number: <strong>{otherUserPhone}</strong></span>
             </div>
             <button 
@@ -262,11 +264,11 @@ export default function ChatRoomPage() {
             </button>
           </div>
         ) : (
-          <div className="flex justify-between items-center bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 p-3.5 rounded-xl text-xs font-bold">
+          <div className="flex justify-between items-center bg-violet-500/10 border border-violet-500/20 text-violet-400 p-3.5 rounded-xl text-xs font-bold">
             <span>Coordinate details over phone?</span>
-            <button 
+            <button
               onClick={handleRevealContact}
-              className="px-3.5 py-1.5 bg-indigo-600 text-white hover:bg-indigo-500 rounded-lg text-[10px] uppercase tracking-wider font-extrabold transition"
+              className="px-3.5 py-1.5 bg-violet-600 text-white hover:bg-violet-500 rounded-lg text-[10px] uppercase tracking-wider font-extrabold transition"
             >
               Reveal Contact Number
             </button>
@@ -285,11 +287,12 @@ export default function ChatRoomPage() {
           />
           <button 
             type="submit" 
-            className="btn-primary p-3 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-blue-500/20"
+            className="btn-primary p-3 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-violet-500/20"
           >
             <Send className="w-4 h-4" />
           </button>
         </form>
+      </div>
       </div>
     </div>
   );

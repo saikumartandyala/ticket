@@ -193,7 +193,9 @@ export default function PostTicketPage() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto px-6 py-12">
+    <div className="relative">
+      <div className="absolute top-0 left-0 right-0 h-[400px] hero-beam" />
+      <div className="relative max-w-2xl mx-auto px-6 py-12">
       {/* Progress indicators */}
       {step < 6 && (
         <div className="flex justify-between items-center mb-8 border-b border-white/5 pb-4">
@@ -222,7 +224,7 @@ export default function PostTicketPage() {
               <button
                 key={cat.id}
                 onClick={() => handleCategorySelect(cat.id, cat.slug)}
-                className="glass-card p-6 flex flex-col items-center justify-center gap-4 hover:border-blue-500/30 group text-center"
+                className="glow-card p-6 flex flex-col items-center justify-center gap-4 hover:border-violet-500/30 group text-center"
               >
                 <div 
                   className="w-12 h-12 rounded-2xl flex items-center justify-center text-white transition-all group-hover:scale-110"
@@ -355,7 +357,7 @@ export default function PostTicketPage() {
       {step === 3 && (
         <div className="space-y-6">
           <div className="text-center space-y-2">
-            <Upload className="w-10 h-10 text-indigo-500 mx-auto" />
+            <Upload className="w-10 h-10 text-violet-500 mx-auto" />
             <h2 className="text-lg font-black font-display">Upload Ticket Screenshot (Optional)</h2>
             <p className="text-xs text-slate-400">Not required, but a screenshot of your ticket helps buyers trust your listing.</p>
           </div>
@@ -372,7 +374,7 @@ export default function PostTicketPage() {
               </div>
             ) : (
               <label className="cursor-pointer space-y-2 block">
-                <span className="text-sm font-semibold text-blue-400 underline block">Click to select screenshot</span>
+                <span className="text-sm font-semibold text-violet-400 underline block">Click to select screenshot</span>
                 <span className="text-[10px] text-slate-500 block">Accepts JPEG, PNG, WebP · Max 5MB</span>
                 <input 
                   type="file" 
@@ -474,7 +476,7 @@ export default function PostTicketPage() {
 
             <div className="flex justify-between items-center text-xs">
               <span className="text-slate-400">Asking price:</span>
-              <span className="font-extrabold text-blue-400">₹{askingPrice} (saves {savingsPct}%)</span>
+              <span className="font-extrabold text-violet-400">₹{askingPrice} (saves {savingsPct}%)</span>
             </div>
           </div>
 
@@ -484,7 +486,7 @@ export default function PostTicketPage() {
               id="terms" 
               checked={termsAccepted}
               onChange={(e) => setTermsAccepted(e.target.checked)}
-              className="mt-1 accent-blue-500"
+              className="mt-1 accent-violet-500"
             />
             <label htmlFor="terms" className="text-xs text-slate-400 leading-relaxed cursor-pointer select-none">
               I confirm that this ticket is genuine, owned by me, and that I will promptly coordinate ticket transfer with seekers on match acceptance.
@@ -506,7 +508,7 @@ export default function PostTicketPage() {
 
       {/* STEP 6: Success */}
       {step === 6 && (
-        <div className="glass-card p-10 text-center space-y-6 flex flex-col items-center justify-center">
+        <div className="glow-card p-10 text-center space-y-6 flex flex-col items-center justify-center">
           <div className="w-16 h-16 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center text-3xl font-extrabold">✓</div>
           
           <div className="space-y-2">
@@ -521,6 +523,7 @@ export default function PostTicketPage() {
           </button>
         </div>
       )}
+      </div>
     </div>
   );
 }

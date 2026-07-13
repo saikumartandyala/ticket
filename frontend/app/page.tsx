@@ -126,24 +126,24 @@ export default function LandingPage() {
           glowRadius={140}
           sparkle={false}
           waveAmplitude={0}
-          gradientFrom="rgba(120, 70, 200, 0.16)"
-          gradientTo="rgba(120, 100, 170, 0.08)"
-          glowColor="#120F17"
+          gradientFrom="rgba(168, 85, 247, 0.18)"
+          gradientTo="rgba(124, 58, 237, 0.08)"
+          glowColor="#0c0812"
         />
-        <div className="absolute inset-x-0 bottom-0 h-64 bg-gradient-to-b from-transparent to-[#030510]" />
+        <div className="absolute inset-x-0 bottom-0 h-64 bg-gradient-to-b from-transparent to-[#050308]" />
       </div>
 
       {/* HERO SECTION */}
       <section className="px-6 md:px-12 pt-16 pb-20 max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
         <div className="lg:col-span-7 space-y-6">
-          <div className="inline-flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 px-3.5 py-1 rounded-full text-xs text-blue-400 font-semibold tracking-wide">
+          <div className="inline-flex items-center gap-2 bg-violet-500/10 border border-violet-500/20 px-3.5 py-1 rounded-full text-xs text-violet-400 font-semibold tracking-wide">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             <span>Live Ticket Resale Portal</span>
           </div>
           
           <h1 className="text-4xl md:text-6xl font-black font-display tracking-tight leading-[1.1] text-slate-100">
             Last Minute Tickets.<br />
-            <span className="bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">Real Connections.</span>
+            <span className="bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">Real Connections.</span>
           </h1>
           
           <p className="text-base md:text-lg text-slate-400 max-w-xl font-medium">
@@ -225,7 +225,7 @@ export default function LandingPage() {
               onClick={() => setActiveTab(cat)}
               className={`px-4 py-1.5 rounded-full text-xs font-semibold uppercase tracking-wider border transition-all ${
                 activeTab === cat 
-                  ? 'bg-blue-600/20 border-blue-500/40 text-blue-400' 
+                  ? 'bg-violet-600/20 border-violet-500/40 text-violet-400'
                   : 'bg-white/5 border-white/5 text-slate-400 hover:text-slate-300 hover:bg-white/10'
               }`}
             >
@@ -242,7 +242,7 @@ export default function LandingPage() {
             <h2 className="text-2xl md:text-3xl font-black font-display">🔴 Live Tickets Right Now</h2>
             <p className="text-sm text-slate-400 mt-1">Updates in real-time. Direct peer-to-peer contact verification.</p>
           </div>
-          <Link href="/tickets" className="text-blue-400 hover:text-blue-300 text-sm font-semibold flex items-center gap-1">
+          <Link href="/tickets" className="text-violet-400 hover:text-violet-300 text-sm font-semibold flex items-center gap-1">
             <span>View All</span>
             <ArrowRight className="w-4 h-4" />
           </Link>
@@ -265,7 +265,7 @@ export default function LandingPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="glass-card p-6 text-center space-y-4">
-              <div className="w-12 h-12 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center mx-auto text-xl font-bold">1</div>
+              <div className="w-12 h-12 rounded-2xl bg-violet-500/10 border border-violet-500/20 text-violet-400 flex items-center justify-center mx-auto text-xl font-bold">1</div>
               <h3 className="font-bold text-lg">List or Browse</h3>
               <p className="text-xs text-slate-400 leading-relaxed">
                 Transferors list unwanted tickets at 30-90% of value. Seekers search by date and route.
@@ -273,7 +273,7 @@ export default function LandingPage() {
             </div>
             
             <div className="glass-card p-6 text-center space-y-4">
-              <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center mx-auto text-xl font-bold">2</div>
+              <div className="w-12 h-12 rounded-2xl bg-fuchsia-500/10 border border-fuchsia-500/20 text-fuchsia-400 flex items-center justify-center mx-auto text-xl font-bold">2</div>
               <h3 className="font-bold text-lg">Express Interest</h3>
               <p className="text-xs text-slate-400 leading-relaxed">
                 Seekers click &quot;I&apos;m Interested&quot;. Sellers review credentials and accept the match.
@@ -311,7 +311,7 @@ export default function LandingPage() {
           clickEffect
           spotlightRadius={280}
           particleCount={10}
-          glowColor="59, 130, 246"
+          glowColor="168, 85, 247"
         />
       </section>
 

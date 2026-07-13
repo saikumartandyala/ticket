@@ -8,8 +8,10 @@ Channel = Literal["phone", "email"]
 
 def _validate_identifier(identifier: str, channel: str) -> str:
     if channel == "phone":
-        if not re.match(r"^\+91\d{10}$", identifier):
-            raise ValueError("Phone number must be in the format +91XXXXXXXXXX (Indian country code + 10 digits)")
+        # E.164 international format: + followed by country code and number,
+        # 8-15 digits total, first digit non-zero. Not India-specific.
+        if not re.match(r"^\+[1-9]\d{7,14}$", identifier):
+            raise ValueError("Enter a valid phone number with country code, e.g. +14155552671")
     else:
         if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", identifier):
             raise ValueError("Enter a valid email address")
@@ -17,7 +19,7 @@ def _validate_identifier(identifier: str, channel: str) -> str:
 
 # --- AUTH SCHEMAS ---
 class OTPSendRequest(BaseModel):
-    identifier: str = Field(..., description="Phone number (+91XXXXXXXXXX) or email address")
+    identifier: str = Field(..., description="Phone number (E.164, e.g. +14155552671) or email address")
     channel: Channel
 
     @model_validator(mode="after")

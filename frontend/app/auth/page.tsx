@@ -44,8 +44,8 @@ export default function AuthPage() {
     e.preventDefault();
     setError('');
 
-    if (channel === 'phone' && !/^\+91\d{10}$/.test(identifier)) {
-      setError('Enter a valid 10-digit number with +91 country code.');
+    if (channel === 'phone' && !/^\+[1-9]\d{7,14}$/.test(identifier)) {
+      setError('Enter a valid phone number with country code, e.g. +14155552671.');
       return;
     }
     if (channel === 'email' && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(identifier)) {
@@ -301,9 +301,11 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="max-w-md mx-auto my-16 px-6">
-      <div className="glass-card p-8 shadow-2xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-blue-500/20 to-transparent rounded-bl-full pointer-events-none" />
+    <div className="relative">
+      <div className="absolute top-0 left-0 right-0 h-[500px] hero-beam" />
+      <div className="relative max-w-md mx-auto my-16 px-6">
+      <div className="glow-card p-8 shadow-2xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-violet-500/20 to-transparent rounded-bl-full pointer-events-none" />
 
         {error && (
           <div className="mb-6 p-3 text-xs bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-lg">
@@ -314,7 +316,7 @@ export default function AuthPage() {
         {step === 'select' && (
           <form onSubmit={handleContinue} className="space-y-6">
             <div className="text-center space-y-2">
-              <Smartphone className="w-10 h-10 text-blue-500 mx-auto" />
+              <Smartphone className="w-10 h-10 text-violet-500 mx-auto" />
               <h2 className="text-2xl font-black font-display">Log In or Sign Up</h2>
               <p className="text-xs text-slate-400">Choose how you&apos;d like to continue.</p>
             </div>
@@ -323,14 +325,14 @@ export default function AuthPage() {
               <button
                 type="button"
                 onClick={() => { setChannel('phone'); setIdentifier(''); }}
-                className={`flex-1 py-2.5 flex items-center justify-center gap-1.5 transition ${channel === 'phone' ? 'bg-blue-600/20 text-blue-400' : 'text-slate-400 hover:bg-white/5'}`}
+                className={`flex-1 py-2.5 flex items-center justify-center gap-1.5 transition ${channel === 'phone' ? 'bg-violet-600/20 text-violet-400' : 'text-slate-400 hover:bg-white/5'}`}
               >
                 <Smartphone className="w-3.5 h-3.5" /> Phone
               </button>
               <button
                 type="button"
                 onClick={() => { setChannel('email'); setIdentifier(''); }}
-                className={`flex-1 py-2.5 flex items-center justify-center gap-1.5 transition ${channel === 'email' ? 'bg-blue-600/20 text-blue-400' : 'text-slate-400 hover:bg-white/5'}`}
+                className={`flex-1 py-2.5 flex items-center justify-center gap-1.5 transition ${channel === 'email' ? 'bg-violet-600/20 text-violet-400' : 'text-slate-400 hover:bg-white/5'}`}
               >
                 <Mail className="w-3.5 h-3.5" /> Email
               </button>
@@ -342,7 +344,7 @@ export default function AuthPage() {
               </label>
               <input
                 type={channel === 'phone' ? 'text' : 'email'}
-                placeholder={channel === 'phone' ? '+919876543210' : 'you@example.com'}
+                placeholder={channel === 'phone' ? '+14155552671' : 'you@example.com'}
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
                 className="w-full input-glass text-sm"
@@ -360,7 +362,7 @@ export default function AuthPage() {
         {step === 'password' && (
           <form onSubmit={handlePasswordLogin} className="space-y-6">
             <div className="text-center space-y-2">
-              <Lock className="w-10 h-10 text-blue-500 mx-auto" />
+              <Lock className="w-10 h-10 text-violet-500 mx-auto" />
               <h2 className="text-2xl font-black font-display">Enter Password</h2>
               <p className="text-xs text-slate-400">Logging in as {identifier}</p>
             </div>
@@ -385,7 +387,7 @@ export default function AuthPage() {
               <button type="button" onClick={() => setStep('select')} className="text-slate-400 hover:text-slate-300 flex items-center gap-1">
                 <ArrowLeft className="w-3.5 h-3.5" /> Back
               </button>
-              <button type="button" onClick={handleForgotPassword} className="text-blue-400 hover:text-blue-300 font-semibold">
+              <button type="button" onClick={handleForgotPassword} className="text-violet-400 hover:text-violet-300 font-semibold">
                 Forgot password?
               </button>
             </div>
@@ -395,7 +397,7 @@ export default function AuthPage() {
         {step === 'otp' && (
           <form onSubmit={handleVerifyOtp} className="space-y-6">
             <div className="text-center space-y-2">
-              <KeyRound className="w-10 h-10 text-indigo-500 mx-auto" />
+              <KeyRound className="w-10 h-10 text-fuchsia-500 mx-auto" />
               <h2 className="text-2xl font-black font-display">Enter OTP</h2>
               <p className="text-xs text-slate-400">We&apos;ve sent a 6-digit code to your {channelLabel}</p>
             </div>
@@ -427,7 +429,7 @@ export default function AuthPage() {
         {step === 'set-password' && (
           <form onSubmit={handleSetPassword} className="space-y-6">
             <div className="text-center space-y-2">
-              <Lock className="w-10 h-10 text-blue-500 mx-auto" />
+              <Lock className="w-10 h-10 text-violet-500 mx-auto" />
               <h2 className="text-2xl font-black font-display">Set a Password</h2>
               <p className="text-xs text-slate-400">At least 8 characters. You&apos;ll use this to log in next time.</p>
             </div>
@@ -464,7 +466,7 @@ export default function AuthPage() {
         {step === 'full-name' && (
           <form onSubmit={handleSetName} className="space-y-6">
             <div className="text-center space-y-2">
-              <UserRound className="w-10 h-10 text-blue-500 mx-auto" />
+              <UserRound className="w-10 h-10 text-violet-500 mx-auto" />
               <h2 className="text-2xl font-black font-display">What&apos;s your name?</h2>
               <p className="text-xs text-slate-400">Shown to other users you match with.</p>
             </div>
@@ -491,7 +493,7 @@ export default function AuthPage() {
         {step === 'reset-otp' && (
           <form onSubmit={handleResetPassword} className="space-y-6">
             <div className="text-center space-y-2">
-              <KeyRound className="w-10 h-10 text-indigo-500 mx-auto" />
+              <KeyRound className="w-10 h-10 text-fuchsia-500 mx-auto" />
               <h2 className="text-2xl font-black font-display">Reset Password</h2>
               <p className="text-xs text-slate-400">Enter the code sent to your {channelLabel} and choose a new password.</p>
             </div>
@@ -541,6 +543,7 @@ export default function AuthPage() {
             </button>
           </form>
         )}
+      </div>
       </div>
     </div>
   );

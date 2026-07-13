@@ -121,11 +121,13 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-6 md:px-12 py-10 grid grid-cols-1 lg:grid-cols-12 gap-8">
+    <div className="relative">
+      <div className="absolute top-0 left-0 right-0 h-[500px] hero-beam" />
+      <div className="relative max-w-7xl mx-auto px-6 md:px-12 py-10 grid grid-cols-1 lg:grid-cols-12 gap-8">
       {/* PROFILE SIDEBAR SUMMARY */}
       <aside className="lg:col-span-4 space-y-6">
-        <div className="glass-card p-6 text-center space-y-4">
-          <div className="w-20 h-20 rounded-full bg-blue-600/20 border-2 border-blue-500/40 text-blue-300 text-3xl font-black flex items-center justify-center mx-auto">
+        <div className="glow-card p-6 text-center space-y-4">
+          <div className="w-20 h-20 rounded-full bg-violet-600/20 border-2 border-violet-500/40 text-violet-300 text-3xl font-black flex items-center justify-center mx-auto">
             {user?.name ? user.name[0].toUpperCase() : 'U'}
           </div>
           <div>
@@ -146,11 +148,11 @@ export default function DashboardPage() {
           <div className="grid grid-cols-2 gap-4 border-t border-white/5 pt-4 text-xs">
             <div className="text-center bg-white/5 p-3 rounded-xl border border-white/5">
               <span className="text-slate-500 font-bold uppercase tracking-wider block">Listings</span>
-              <span className="text-xl font-extrabold text-blue-400 mt-1 block">{listings.length}</span>
+              <span className="text-xl font-extrabold text-violet-400 mt-1 block">{listings.length}</span>
             </div>
             <div className="text-center bg-white/5 p-3 rounded-xl border border-white/5">
               <span className="text-slate-500 font-bold uppercase tracking-wider block">Matches</span>
-              <span className="text-xl font-extrabold text-indigo-400 mt-1 block">{matches.filter(m=>m.status==='transferred').length}</span>
+              <span className="text-xl font-extrabold text-fuchsia-400 mt-1 block">{matches.filter(m=>m.status==='transferred').length}</span>
             </div>
           </div>
         </div>
@@ -162,14 +164,14 @@ export default function DashboardPage() {
         <div className="flex border-b border-white/5 pb-2 gap-4 overflow-x-auto text-xs font-semibold uppercase tracking-wider">
           <button 
             onClick={() => setActiveTab('listings')}
-            className={`pb-2 transition-all ${activeTab === 'listings' ? 'text-blue-400 border-b-2 border-blue-500 font-bold' : 'text-slate-500'}`}
+            className={`pb-2 transition-all ${activeTab === 'listings' ? 'text-violet-400 border-b-2 border-violet-500 font-bold' : 'text-slate-500'}`}
           >
             My Listings ({listings.length})
           </button>
           
           <button 
             onClick={() => setActiveTab('matches')}
-            className={`pb-2 transition-all ${activeTab === 'matches' ? 'text-indigo-400 border-b-2 border-indigo-500 font-bold' : 'text-slate-500'}`}
+            className={`pb-2 transition-all ${activeTab === 'matches' ? 'text-fuchsia-400 border-b-2 border-fuchsia-500 font-bold' : 'text-slate-500'}`}
           >
             My Matches ({matches.length})
           </button>
@@ -187,7 +189,7 @@ export default function DashboardPage() {
           <div className="space-y-4">
             {listings.length > 0 ? (
               listings.map((l) => (
-                <div key={l.id} className="glass-card p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div key={l.id} className="glow-card p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                   <div>
                     <h3 className="font-bold text-sm text-slate-200">{l.title}</h3>
                     <div className="flex flex-wrap items-center gap-3 text-[10px] text-slate-500 font-semibold mt-1">
@@ -195,12 +197,12 @@ export default function DashboardPage() {
                       <span>•</span>
                       <span>Price: ₹{l.asking_price}</span>
                       <span>•</span>
-                      <span className="text-blue-400">👁 {l.view_count || 0} Views</span>
+                      <span className="text-violet-400">👁 {l.view_count || 0} Views</span>
                     </div>
                   </div>
                   
                   <div className="flex gap-2">
-                    <span className="text-[10px] bg-blue-500/10 border border-blue-500/20 text-blue-400 px-3 py-1 rounded-full uppercase font-extrabold">{l.status}</span>
+                    <span className="text-[10px] bg-violet-500/10 border border-violet-500/20 text-violet-400 px-3 py-1 rounded-full uppercase font-extrabold">{l.status}</span>
                   </div>
                 </div>
               ))
@@ -219,7 +221,7 @@ export default function DashboardPage() {
               matches.map((m) => {
                 const isSeller = m.transferor_id === user?.id;
                 return (
-                  <div key={m.id} className="glass-card p-5 space-y-4">
+                  <div key={m.id} className="glow-card p-5 space-y-4">
                     <div className="flex justify-between items-start">
                       <div>
                         <h4 className="font-bold text-sm text-slate-200">{m.listing.title}</h4>
@@ -229,7 +231,7 @@ export default function DashboardPage() {
                       </div>
                       <span className={`text-[10px] uppercase font-bold px-2.5 py-0.5 rounded-full border ${
                         m.status === 'pending' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
-                        m.status === 'accepted' || m.status === 'contact_revealed' ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400' :
+                        m.status === 'accepted' || m.status === 'contact_revealed' ? 'bg-violet-500/10 border-violet-500/20 text-violet-400' :
                         'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
                       }`}>
                         {m.status}
@@ -254,7 +256,7 @@ export default function DashboardPage() {
                           </button>
                           <button 
                             onClick={() => handleAcceptMatch(m.id)}
-                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-full transition"
+                            className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold rounded-full transition"
                           >
                             Accept Seeker
                           </button>
@@ -291,7 +293,7 @@ export default function DashboardPage() {
             
             {alerts.length > 0 ? (
               alerts.map((a) => (
-                <div key={a.id} className="glass-card p-5 flex justify-between items-center gap-4">
+                <div key={a.id} className="glow-card p-5 flex justify-between items-center gap-4">
                   <div>
                     <h4 className="font-bold text-sm text-slate-200">
                       {a.origin_city && a.destination_city ? `${a.origin_city} → ${a.destination_city}` : 'Ticket Alert'}
@@ -316,6 +318,7 @@ export default function DashboardPage() {
           </div>
         )}
       </main>
+      </div>
     </div>
   );
 }
