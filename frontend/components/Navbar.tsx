@@ -90,12 +90,14 @@ export const Navbar: React.FC = () => {
             </button>
           </div>
         ) : (
-          <Link href="/auth" className="btn-glow-pill">
-            <span>
-              <LogIn className="w-3.5 h-3.5" />
-              Login / Register
-            </span>
-          </Link>
+          pathname !== '/auth' && (
+            <Link href="/auth" className="btn-glow-pill">
+              <span>
+                <LogIn className="w-3.5 h-3.5" />
+                Login / Register
+              </span>
+            </Link>
+          )
         )}
       </div>
     </nav>

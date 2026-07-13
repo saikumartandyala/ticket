@@ -1,12 +1,14 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '../../store/authStore';
-import { Smartphone, Mail, CheckCircle, ArrowRight, ArrowLeft, KeyRound, Lock, UserRound } from 'lucide-react';
+import { Mail, CheckCircle, ArrowRight, ArrowLeft, KeyRound, Lock, UserRound } from 'lucide-react';
 import { API_BASE } from '../../lib/api';
 
-type Channel = 'phone' | 'email';
+// Email-only for now — no SMS provider is configured (MSG91 is set up for
+// email OTP only), so a phone channel isn't actually usable yet.
+const channel = 'email' as const;
 type Step = 'select' | 'password' | 'otp' | 'set-password' | 'full-name' | 'reset-otp';
 
 async function parseError(response: Response, fallback: string): Promise<string> {
@@ -22,9 +24,8 @@ async function parseError(response: Response, fallback: string): Promise<string>
 
 export default function AuthPage() {
   const router = useRouter();
-  const { setAuth, updateUser, token: storedToken } = useAuthStore();
+  const { isAuthenticated, setAuth, token: storedToken } = useAuthStore();
 
-  const [channel, setChannel] = useState<Channel>('phone');
   const [identifier, setIdentifier] = useState('');
   const [step, setStep] = useState<Step>('select');
   const [loading, setLoading] = useState(false);
@@ -37,18 +38,21 @@ export default function AuthPage() {
 
   const [pendingToken, setPendingToken] = useState<string | null>(null);
 
-  const channelLabel = channel === 'phone' ? 'phone number' : 'email address';
+  const channelLabel = 'email address';
 
-  // Step 1: enter phone/email, decide whether to show password or OTP
+  // Already logged in? Don't show the login form again — send them on.
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.push('/dashboard');
+    }
+  }, [isAuthenticated, router]);
+
+  // Step 1: enter email, decide whether to show password or OTP
   const handleContinue = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    if (channel === 'phone' && !/^\+[1-9]\d{7,14}$/.test(identifier)) {
-      setError('Enter a valid phone number with country code, e.g. +14155552671.');
-      return;
-    }
-    if (channel === 'email' && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(identifier)) {
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(identifier)) {
       setError('Enter a valid email address.');
       return;
     }
@@ -157,7 +161,10 @@ export default function AuthPage() {
       setPendingToken(data.access_token);
 
       if (data.is_new_user || !data.has_password) {
-        await loadProfileAndFinish(data.access_token, { skipRedirect: true });
+        // Registration isn't complete yet — hold the token privately and
+        // keep going through set-password + full-name. The user is NOT
+        // marked as logged in (no setAuth call) until that whole wizard
+        // finishes, so an abandoned signup never looks "logged in".
         setStep('set-password');
       } else {
         await loadProfileAndFinish(data.access_token);
@@ -229,8 +236,10 @@ export default function AuthPage() {
         setError(await parseError(res, 'Could not save your name.'));
         return;
       }
-      updateUser({ name });
-      router.push('/dashboard');
+      // Registration wizard is now fully complete (OTP verified, password
+      // set, name set) — this is the one place a new account actually
+      // becomes "logged in".
+      await loadProfileAndFinish(activeToken!);
     } catch (err) {
       setError('Could not reach the server. Please check your connection and try again.');
     } finally {
@@ -314,37 +323,18 @@ export default function AuthPage() {
         )}
 
         {step === 'select' && (
-          <form onSubmit={handleContinue} className="space-y-6">
+          <form onSubmit={handleContinue} noValidate className="space-y-6">
             <div className="text-center space-y-2">
-              <Smartphone className="w-10 h-10 text-violet-500 mx-auto" />
+              <Mail className="w-10 h-10 text-violet-500 mx-auto" />
               <h2 className="text-2xl font-black font-display">Log In or Sign Up</h2>
-              <p className="text-xs text-slate-400">Choose how you&apos;d like to continue.</p>
-            </div>
-
-            <div className="flex rounded-xl border border-white/10 overflow-hidden text-xs font-semibold">
-              <button
-                type="button"
-                onClick={() => { setChannel('phone'); setIdentifier(''); }}
-                className={`flex-1 py-2.5 flex items-center justify-center gap-1.5 transition ${channel === 'phone' ? 'bg-violet-600/20 text-violet-400' : 'text-slate-400 hover:bg-white/5'}`}
-              >
-                <Smartphone className="w-3.5 h-3.5" /> Phone
-              </button>
-              <button
-                type="button"
-                onClick={() => { setChannel('email'); setIdentifier(''); }}
-                className={`flex-1 py-2.5 flex items-center justify-center gap-1.5 transition ${channel === 'email' ? 'bg-violet-600/20 text-violet-400' : 'text-slate-400 hover:bg-white/5'}`}
-              >
-                <Mail className="w-3.5 h-3.5" /> Email
-              </button>
+              <p className="text-xs text-slate-400">Enter your email to continue.</p>
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-400">
-                {channel === 'phone' ? 'Mobile Number' : 'Email Address'}
-              </label>
+              <label className="text-xs font-semibold text-slate-400">Email Address</label>
               <input
-                type={channel === 'phone' ? 'text' : 'email'}
-                placeholder={channel === 'phone' ? '+14155552671' : 'you@example.com'}
+                type="email"
+                placeholder="you@example.com"
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
                 className="w-full input-glass text-sm"
@@ -360,7 +350,7 @@ export default function AuthPage() {
         )}
 
         {step === 'password' && (
-          <form onSubmit={handlePasswordLogin} className="space-y-6">
+          <form onSubmit={handlePasswordLogin} noValidate className="space-y-6">
             <div className="text-center space-y-2">
               <Lock className="w-10 h-10 text-violet-500 mx-auto" />
               <h2 className="text-2xl font-black font-display">Enter Password</h2>
@@ -395,7 +385,7 @@ export default function AuthPage() {
         )}
 
         {step === 'otp' && (
-          <form onSubmit={handleVerifyOtp} className="space-y-6">
+          <form onSubmit={handleVerifyOtp} noValidate className="space-y-6">
             <div className="text-center space-y-2">
               <KeyRound className="w-10 h-10 text-fuchsia-500 mx-auto" />
               <h2 className="text-2xl font-black font-display">Enter OTP</h2>
@@ -409,7 +399,7 @@ export default function AuthPage() {
                 placeholder="123456"
                 value={otp}
                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-                className="w-full input-glass text-center font-bold tracking-[0.75em] text-lg"
+                className="w-full input-glass text-center font-bold tracking-[0.75em] text-lg placeholder:font-normal placeholder:text-slate-700"
                 maxLength={6}
                 required
               />
@@ -421,13 +411,13 @@ export default function AuthPage() {
             </button>
 
             <button type="button" onClick={() => setStep('select')} className="text-xs text-slate-400 hover:text-slate-300 flex items-center gap-1">
-              <ArrowLeft className="w-3.5 h-3.5" /> Change {channel === 'phone' ? 'number' : 'email'}
+              <ArrowLeft className="w-3.5 h-3.5" /> Change email
             </button>
           </form>
         )}
 
         {step === 'set-password' && (
-          <form onSubmit={handleSetPassword} className="space-y-6">
+          <form onSubmit={handleSetPassword} noValidate className="space-y-6">
             <div className="text-center space-y-2">
               <Lock className="w-10 h-10 text-violet-500 mx-auto" />
               <h2 className="text-2xl font-black font-display">Set a Password</h2>
@@ -464,7 +454,7 @@ export default function AuthPage() {
         )}
 
         {step === 'full-name' && (
-          <form onSubmit={handleSetName} className="space-y-6">
+          <form onSubmit={handleSetName} noValidate className="space-y-6">
             <div className="text-center space-y-2">
               <UserRound className="w-10 h-10 text-violet-500 mx-auto" />
               <h2 className="text-2xl font-black font-display">What&apos;s your name?</h2>
@@ -491,7 +481,7 @@ export default function AuthPage() {
         )}
 
         {step === 'reset-otp' && (
-          <form onSubmit={handleResetPassword} className="space-y-6">
+          <form onSubmit={handleResetPassword} noValidate className="space-y-6">
             <div className="text-center space-y-2">
               <KeyRound className="w-10 h-10 text-fuchsia-500 mx-auto" />
               <h2 className="text-2xl font-black font-display">Reset Password</h2>
@@ -505,7 +495,7 @@ export default function AuthPage() {
                 placeholder="123456"
                 value={otp}
                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-                className="w-full input-glass text-center font-bold tracking-[0.75em] text-lg"
+                className="w-full input-glass text-center font-bold tracking-[0.75em] text-lg placeholder:font-normal placeholder:text-slate-700"
                 maxLength={6}
                 required
               />

@@ -30,11 +30,10 @@ async def _get_user_by_identifier(db: AsyncSession, identifier: str, channel: st
     return result.scalar_one_or_none()
 
 
-async def _dispatch_otp(identifier: str, channel: str, otp: str) -> None:
+async def _dispatch_otp(identifier: str, channel: str, otp: str) -> bool:
     if channel == "phone":
-        await send_otp_sms(identifier, otp)
-    else:
-        await send_otp_email(identifier, otp)
+        return await send_otp_sms(identifier, otp)
+    return await send_otp_email(identifier, otp)
 
 
 def _issue_session_cookie(response: Response, access_token: str) -> None:
@@ -67,7 +66,11 @@ async def send_otp(payload: OTPSendRequest, db: AsyncSession = Depends(get_db)):
     db.add(session)
     await db.commit()
 
-    await _dispatch_otp(payload.identifier, payload.channel, otp)
+    if not await _dispatch_otp(payload.identifier, payload.channel, otp):
+        raise HTTPException(
+            status_code=502,
+            detail="Could not send the OTP right now. Please try again in a moment.",
+        )
 
     return {"message": "OTP sent successfully", "identifier": payload.identifier, "channel": payload.channel}
 
@@ -227,7 +230,11 @@ async def forgot_password(payload: OTPSendRequest, db: AsyncSession = Depends(ge
     db.add(session)
     await db.commit()
 
-    await _dispatch_otp(payload.identifier, payload.channel, otp)
+    if not await _dispatch_otp(payload.identifier, payload.channel, otp):
+        raise HTTPException(
+            status_code=502,
+            detail="Could not send the reset code right now. Please try again in a moment.",
+        )
 
     return {"message": "Password reset OTP sent"}
 

@@ -70,8 +70,10 @@ services:
       - FRONTEND_URL=https://${DOMAIN}
       - MSG91_API_KEY=${MSG91_API_KEY:-}
       - MSG91_TEMPLATE_ID=${MSG91_TEMPLATE_ID:-}
-      - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
+      - EMAIL_USER=${EMAIL_USER:-}
+      - EMAIL_PASS=${EMAIL_PASS:-}
       - EMAIL_FROM=${EMAIL_FROM:-noreply@tic.fe-zzz.com}
+      - EMAIL_FROM_NAME=${EMAIL_FROM_NAME:-LastMinutePass}
       # Picked up by your existing nginx-proxy container — routes this same
       # domain's /api/ (and /api/v1/ws/ under it) to this container.
       - VIRTUAL_HOST=${DOMAIN}

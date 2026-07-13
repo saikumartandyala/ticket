@@ -30,9 +30,17 @@ class Settings(BaseSettings):
     
     MSG91_API_KEY: Optional[str] = None
     MSG91_TEMPLATE_ID: Optional[str] = None  # SMS OTP template (not currently used - email only)
-    MSG91_EMAIL_TEMPLATE_ID: Optional[str] = None  # Email OTP template, from the MSG91 dashboard
-    SENDGRID_API_KEY: Optional[str] = None
+
+    # Gmail SMTP — used to send OTP emails. Requires a Google Account with
+    # 2-Step Verification enabled and an App Password generated at
+    # https://myaccount.google.com/apppasswords (NOT the normal Gmail
+    # password — Gmail rejects SMTP logins with the account password).
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    EMAIL_USER: Optional[str] = None  # your Gmail address
+    EMAIL_PASS: Optional[str] = None  # the 16-character App Password
     EMAIL_FROM: str = "noreply@lastminutepass.in"
+    EMAIL_FROM_NAME: str = "LastMinutePass"
     
     ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:8000"]
     
