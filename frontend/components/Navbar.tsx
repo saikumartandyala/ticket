@@ -2,104 +2,121 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { Ticket, PlusCircle, LayoutDashboard, LogIn, LogOut, Bell } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore } from '../store/authStore';
+
+const NAV = [
+  { label: 'Home', path: '/' },
+  { label: 'Browse', path: '/tickets' },
+  { label: 'Dashboard', path: '/dashboard' },
+];
 
 export const Navbar: React.FC = () => {
   const pathname = usePathname();
+  const router = useRouter();
   const { isAuthenticated, user, logout } = useAuthStore();
 
-  const navItems = [
-    { label: 'Browse Tickets', path: '/tickets', icon: Ticket },
-    { label: 'Post Ticket', path: '/post', icon: PlusCircle },
-  ];
-
-  if (isAuthenticated) {
-    navItems.push({ label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard });
-  }
+  const pill = (active: boolean): React.CSSProperties => ({
+    padding: '8px 14px',
+    borderRadius: 999,
+    border: `1px solid ${active ? 'rgba(192,132,252,.5)' : 'transparent'}`,
+    background: active ? 'rgba(168,85,247,.16)' : 'transparent',
+    color: active ? '#fff' : '#a99cc0',
+    fontSize: 13.5,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+    transition: 'color .2s ease, background .2s ease',
+  });
 
   return (
-    <nav className="sticky top-0 z-50 bg-[#0c0812]/80 backdrop-blur-md border-b border-white/5 py-4 px-6 md:px-12 flex justify-between items-center">
-      {/* Logo */}
-      <Link href="/" className="flex items-center gap-2">
-        <div className="bg-gradient-to-r from-violet-500 to-fuchsia-600 p-2 rounded-xl text-white shadow-lg shadow-violet-500/20">
-          <Ticket className="w-5 h-5" />
-        </div>
-        <span className="font-bold text-lg tracking-wider bg-gradient-to-r from-slate-100 to-slate-300 bg-clip-text text-transparent">
-          LastMinute<span className="text-violet-400 font-extrabold">Pass</span>
-        </span>
-      </Link>
+    <header
+      style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 50,
+        backdropFilter: 'blur(18px)',
+        WebkitBackdropFilter: 'blur(18px)',
+        background: 'rgba(8,5,14,.72)',
+        borderBottom: '1px solid rgba(168,85,247,.16)',
+      }}
+    >
+      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 18 }}>
+        {/* Logo */}
+        <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, flex: '0 0 auto' }}>
+          <div
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 10,
+              background: 'linear-gradient(145deg,#c084fc,#7c3aed)',
+              boxShadow: '0 6px 20px rgba(124,58,237,.55), inset 0 1px 0 rgba(255,255,255,.5)',
+              display: 'grid',
+              placeItems: 'center',
+              fontFamily: 'Outfit',
+              fontWeight: 800,
+              color: '#fff',
+              fontSize: 15,
+            }}
+          >
+            L
+          </div>
+          <span style={{ fontFamily: 'Outfit', fontWeight: 700, fontSize: 17, letterSpacing: '-.02em', color: '#fff' }}>
+            LastMinutePass
+          </span>
+        </Link>
 
-      {/* Navigation Links */}
-      <div className="hidden md:flex items-center gap-8">
-        {navItems.map((item) => {
-          const isActive = pathname === item.path;
-
-          if (item.path === '/post') {
-            return (
-              <Link key={item.path} href={item.path} className="btn-glow-pill">
-                <span>
-                  <item.icon className="w-3.5 h-3.5" />
-                  {item.label}
-                </span>
-              </Link>
-            );
-          }
-
-          return (
-            <Link
-              key={item.path}
-              href={item.path}
-              className={`flex items-center gap-2 text-sm font-semibold transition-colors duration-200 ${
-                isActive ? 'text-violet-400' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <item.icon className="w-4 h-4" />
-              <span>{item.label}</span>
+        {/* Nav pills */}
+        <nav className="no-scrollbar" style={{ display: 'flex', gap: 4, marginLeft: 'auto', overflowX: 'auto' }}>
+          {NAV.map((n) => (
+            <Link key={n.path} href={n.path} style={pill(pathname === n.path)}>
+              {n.label}
             </Link>
-          );
-        })}
-      </div>
+          ))}
+        </nav>
 
-      {/* Authentication and Profile actions */}
-      <div className="flex items-center gap-4">
+        {/* Right actions */}
         {isAuthenticated ? (
-          <div className="flex items-center gap-4">
-            {/* Notification Icon */}
-            <Link href="/dashboard" className="p-2 text-slate-400 hover:text-slate-200 hover:bg-white/5 rounded-full transition relative">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-violet-500 rounded-full border border-[#0c0812]" />
-            </Link>
-
-            {/* User Profile Avatar */}
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-violet-600/30 border border-violet-500/40 text-violet-300 text-xs font-bold flex items-center justify-center">
-                {user?.name ? user.name.split(' ').map(n=>n[0]).join('').substring(0, 2).toUpperCase() : 'U'}
-              </div>
-              <span className="text-xs text-slate-300 font-medium hidden sm:inline">{user?.name || 'User'}</span>
-            </div>
-
-            {/* Logout */}
-            <button
-              onClick={logout}
-              className="text-slate-400 hover:text-rose-400 p-2 hover:bg-white/5 rounded-full transition"
-              title="Logout"
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: '0 0 auto' }}>
+            <div
+              title={user?.name || 'You'}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 12,
+                background: 'linear-gradient(145deg,#c084fc,#7c3aed)',
+                display: 'grid',
+                placeItems: 'center',
+                fontFamily: 'Outfit',
+                fontWeight: 700,
+                color: '#fff',
+                fontSize: 13,
+                boxShadow: '0 6px 18px rgba(124,58,237,.5)',
+              }}
             >
-              <LogOut className="w-4 h-4" />
+              {user?.name ? user.name.split(' ').map((x) => x[0]).join('').slice(0, 2).toUpperCase() : 'U'}
+            </div>
+            <button
+              onClick={() => { logout(); router.push('/'); }}
+              style={{ background: 'transparent', border: 'none', color: '#a99cc0', fontSize: 13, cursor: 'pointer' }}
+            >
+              Log out
             </button>
           </div>
         ) : (
           pathname !== '/auth' && (
-            <Link href="/auth" className="btn-glow-pill">
-              <span>
-                <LogIn className="w-3.5 h-3.5" />
-                Login / Register
-              </span>
-            </Link>
+            <Link href="/auth" style={pill(false)}>Sign in</Link>
           )
         )}
+
+        {/* Shimmer CTA */}
+        <Link
+          href="/post"
+          className="btn-shimmer"
+          style={{ flex: '0 0 auto', padding: '9px 18px', fontSize: 13, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+        >
+          List a ticket
+        </Link>
       </div>
-    </nav>
+    </header>
   );
 };

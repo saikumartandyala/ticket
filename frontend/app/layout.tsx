@@ -1,17 +1,7 @@
 import type { Metadata } from "next";
-import { Inter, Outfit } from "next/font/google";
 import "./globals.css";
 import { Navbar } from "../components/Navbar";
-
-const inter = Inter({ 
-  subsets: ["latin"],
-  variable: "--font-sans"
-});
-
-const outfit = Outfit({
-  subsets: ["latin"],
-  variable: "--font-display"
-});
+import FieldCanvas from "../components/FieldCanvas";
 
 export const metadata: Metadata = {
   title: "LastMinutePass — P2P Ticket Resale Marketplace",
@@ -31,12 +21,23 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${inter.variable} ${outfit.variable}`}>
-      <body className="bg-[#030510] text-[#f0f4ff] font-sans antialiased min-h-screen flex flex-col">
-        <Navbar />
-        <main className="flex-grow relative">
-          {children}
-        </main>
+    <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Instrument+Sans:wght@400;500;600&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body style={{ background: "#050308", minHeight: "100vh", position: "relative" }}>
+        <FieldCanvas />
+        <div style={{ position: "relative", zIndex: 10, minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+          <Navbar />
+          <main style={{ flexGrow: 1, position: "relative" }}>
+            {children}
+          </main>
+        </div>
       </body>
     </html>
   );

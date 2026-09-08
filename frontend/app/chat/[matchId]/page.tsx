@@ -1,299 +1,160 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, CSSProperties } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuthStore } from '../../../store/authStore';
-import { Send, ArrowLeft, ShieldAlert, Phone, Copy, Check, CheckCheck } from 'lucide-react';
-import Link from 'next/link';
 import { API_BASE, WS_BASE } from '../../../lib/api';
 
-export default function ChatRoomPage() {
+const SAFETY = [
+  'Meet in a public, well-lit place near the venue or station.',
+  'Verify the PNR or barcode before paying anything.',
+  'Never share OTPs — no genuine transfer needs one.',
+  'Report anyone who asks you to pay outside the agreed amount.',
+];
+
+export default function ChatPage() {
   const { matchId } = useParams();
   const router = useRouter();
   const { isAuthenticated, user, token } = useAuthStore();
-  
+
   const [match, setMatch] = useState<any>(null);
   const [messages, setMessages] = useState<any[]>([]);
-  const [inputText, setInputText] = useState('');
-  
-  const [contactRevealed, setContactRevealed] = useState(false);
-  const [otherUserPhone, setOtherUserPhone] = useState('');
+  const [draft, setDraft] = useState('');
+  const [revealed, setRevealed] = useState(false);
+  const [otherPhone, setOtherPhone] = useState('');
   const [copied, setCopied] = useState(false);
 
   const socketRef = useRef<WebSocket | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const endRef = useRef<HTMLDivElement | null>(null);
 
-  // Scroll to bottom helper
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    if (!isAuthenticated) { router.push('/auth'); return; }
 
-  // Fetch match details and messages
-  useEffect(() => {
-    if (!isAuthenticated) {
-      router.push('/auth');
-      return;
-    }
-
-    // 1. Fetch match info
-    fetch(`${API_BASE}/matches/${matchId}`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    })
-      .then(res => {
-        if (res.ok) return res.json();
-        throw new Error('Offline');
-      })
-      .then(data => {
+    fetch(`${API_BASE}/matches/${matchId}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((data) => {
         setMatch(data);
         if (data.status === 'contact_revealed' || data.status === 'transferred') {
-          setContactRevealed(true);
+          setRevealed(true);
           const other = data.seeker_id === user?.id ? data.transferor : data.seeker;
-          setOtherUserPhone(other.phone || '+91 9988776655');
+          setOtherPhone(other?.phone || '');
         }
       })
-      .catch(() => {
-        // Mock fallback
-        setMatch({
-          id: matchId,
-          listing: { id: "1", title: "Mumbai CSMT → Pune Jn", asking_price: "425.00" },
-          seeker_id: "s-1",
-          transferor_id: "dev-user-id",
-          seeker: { name: "Priya Sharma", phone: "+919876543210" },
-          transferor: { name: "Rahul Sharma", phone: "+919988776655" },
-          status: "accepted"
-        });
-      });
+      .catch(() => setMatch({ id: matchId, listing: { title: 'Ticket', asking_price: '0' }, seeker_id: 's', transferor_id: 't', seeker: { name: 'Seeker' }, transferor: { name: 'Seller' }, status: 'accepted' }));
 
-    // 2. Fetch messages
-    fetch(`${API_BASE}/matches/${matchId}/messages`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    })
-      .then(res => {
-        if (res.ok) return res.json();
-        throw new Error('Offline');
-      })
-      .then(data => {
-        setMessages(data);
-      })
-      .catch(() => {
-        // Seed initial mock message conversation
-        setMessages([
-          { id: "msg-1", sender_id: "s-1", content: "Hi Rahul, is the seat booking still transferable?", created_at: new Date(Date.now() - 30 * 60 * 1000).toISOString() },
-          { id: "msg-2", sender_id: "dev-user-id", content: "Yes, it is! I have verified details. Willing to coordinate the transfer.", created_at: new Date(Date.now() - 25 * 60 * 1000).toISOString() }
-        ]);
-      });
+    fetch(`${API_BASE}/matches/${matchId}/messages`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((data) => setMessages(data))
+      .catch(() => setMessages([]));
 
-    // 3. Connect to WebSocket
-    const wsUrl = `${WS_BASE}/ws/chat/${matchId}?token=${token}`;
-    const ws = new WebSocket(wsUrl);
+    const ws = new WebSocket(`${WS_BASE}/ws/chat/${matchId}?token=${token}`);
     socketRef.current = ws;
-
-    ws.onmessage = (event) => {
-      const payload = JSON.parse(event.data);
-      setMessages((prev) => [...prev, payload]);
-    };
-
-    return () => {
-      ws.close();
-    };
+    ws.onmessage = (e) => { try { setMessages((p) => [...p, JSON.parse(e.data)]); } catch {} };
+    return () => ws.close();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId, isAuthenticated]);
 
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputText.trim()) return;
-
-    const payload = {
-      content: inputText.trim()
-    };
-
-    // If WS connected, send it
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      socketRef.current.send(JSON.stringify(payload));
+  const send = () => {
+    const t = draft.trim(); if (!t) return;
+    if (socketRef.current?.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({ content: t }));
     } else {
-      // Offline fallback: append directly and simulate reply
-      const userMsg = {
-        id: `msg-${Date.now()}`,
-        sender_id: user?.id || 'dev-user-id',
-        content: inputText,
-        created_at: new Date().toISOString()
-      };
-      setMessages(prev => [...prev, userMsg]);
+      setMessages((p) => [...p, { id: `m-${Date.now()}`, sender_id: user?.id, content: t, created_at: new Date().toISOString() }]);
     }
-    setInputText('');
+    setDraft('');
   };
 
-  const handleRevealContact = async () => {
+  const reveal = async () => {
     try {
-      const response = await fetch(`${API_BASE}/matches/${matchId}/reveal`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (response.ok) {
-        setContactRevealed(true);
-        const data = await response.json();
+      const res = await fetch(`${API_BASE}/matches/${matchId}/reveal`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) {
+        const data = await res.json();
         const other = data.seeker_id === user?.id ? data.transferor : data.seeker;
-        setOtherUserPhone(other.phone || '+91 98765 43210');
-      } else {
-        // Simulate local contact reveal
-        setContactRevealed(true);
-        const otherPhone = match.seeker_id === user?.id ? match.transferor.phone : match.seeker.phone;
-        setOtherUserPhone(otherPhone || '+91 98765 43210');
+        setOtherPhone(other?.phone || '');
       }
-    } catch (e) {
-      setContactRevealed(true);
-      const otherPhone = match.seeker_id === user?.id ? match.transferor.phone : match.seeker.phone;
-      setOtherUserPhone(otherPhone || '+91 98765 43210');
-    }
+    } catch {}
+    setRevealed(true);
   };
 
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(otherUserPhone);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const confirmTransfer = async () => {
+    try { await fetch(`${API_BASE}/matches/${matchId}/confirm`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }); } catch {}
+    router.push('/dashboard');
   };
 
-  const handleConfirmTransfer = async () => {
-    try {
-      const response = await fetch(`${API_BASE}/matches/${matchId}/confirm`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (response.ok) {
-        router.push('/dashboard');
-      } else {
-        router.push('/dashboard');
-      }
-    } catch (e) {
-      router.push('/dashboard');
-    }
-  };
+  const copy = () => { navigator.clipboard.writeText(otherPhone); setCopied(true); setTimeout(() => setCopied(false), 2000); };
 
-  if (!match) {
-    return <div className="p-12 text-center text-slate-400">Loading chat...</div>;
-  }
+  if (!match) return <div style={{ padding: 48, textAlign: 'center', color: '#9d90b6' }}>Loading chat…</div>;
 
-  const otherUser = match.seeker_id === user?.id ? match.transferor : match.seeker;
-  const isSeller = match.transferor_id === user?.id;
+  const other = match.seeker_id === user?.id ? match.transferor : match.seeker;
+  const otherName = other?.name || 'Partner';
+  const otherInitials = otherName.split(' ').map((x: string) => x[0]).join('').slice(0, 2).toUpperCase();
 
   return (
-    <div className="relative">
-      <div className="absolute top-0 left-0 right-0 h-[400px] hero-beam" />
-      <div className="relative max-w-4xl mx-auto my-6 px-6 h-[80vh] flex flex-col justify-between glow-card overflow-hidden">
-      {/* HEADER */}
-      <header className="py-4 border-b border-white/5 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link href="/dashboard" className="p-2 text-slate-400 hover:text-slate-200 rounded-full transition">
-            <ArrowLeft className="w-5 h-5" />
-          </Link>
-          <div>
-            <h2 className="font-bold text-sm text-slate-200">{otherUser?.name || 'Partner'}</h2>
-            <span className="text-[10px] text-violet-400 font-semibold tracking-wide">
-              Regarding: {match.listing.title} · ₹{Math.round(parseFloat(match.listing.asking_price))}
-            </span>
+    <section style={{ maxWidth: 1180, margin: '0 auto', padding: '32px 20px 60px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(290px,1fr))', gap: 20, alignItems: 'start' }}>
+      {/* Chat panel */}
+      <div style={{ gridColumn: 'span 2', minWidth: 0, display: 'flex', flexDirection: 'column', height: 'min(74vh,640px)', borderRadius: 26, border: '1px solid rgba(168,85,247,.22)', background: 'rgba(255,255,255,.035)', backdropFilter: 'blur(18px)', boxShadow: 'inset 0 0 70px rgba(124,58,237,.14)', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px', borderBottom: '1px solid rgba(168,85,247,.16)' }}>
+          <div style={{ width: 40, height: 40, borderRadius: 13, background: 'linear-gradient(145deg,#c084fc,#7c3aed)', display: 'grid', placeItems: 'center', fontFamily: 'Outfit', fontWeight: 700, color: '#fff', fontSize: 15 }}>{otherInitials}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="font-display" style={{ fontWeight: 600, fontSize: 16, color: '#fff' }}>{otherName}</div>
+            <div style={{ fontSize: 12.5, color: '#86efac', display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ width: 6, height: 6, borderRadius: 99, background: '#4ade80', boxShadow: '0 0 8px #4ade80' }} />online now</div>
           </div>
+          {match.status !== 'transferred' && (
+            <button onClick={confirmTransfer} style={{ padding: '6px 12px', borderRadius: 999, background: 'rgba(74,222,128,.12)', border: '1px solid rgba(74,222,128,.35)', fontSize: 11.5, color: '#86efac', cursor: 'pointer', whiteSpace: 'nowrap' }}>Confirm transfer</button>
+          )}
+          <div style={{ padding: '6px 12px', borderRadius: 999, background: 'rgba(168,85,247,.12)', border: '1px solid rgba(168,85,247,.3)', fontSize: 12, color: '#d8c9ff', whiteSpace: 'nowrap' }}>{match.listing?.title} · ₹{Math.round(parseFloat(match.listing?.asking_price || 0))}</div>
         </div>
 
-        {/* Complete transfer confirmation button */}
-        {match.status !== 'transferred' && (
-          <button 
-            onClick={handleConfirmTransfer}
-            className="px-3.5 py-1.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/25 rounded-full text-[10px] font-bold uppercase transition"
-          >
-            Confirm Transfer Done
-          </button>
-        )}
-      </header>
-
-      {/* SAFETY WARNING BANNER */}
-      <div className="bg-rose-500/10 border-b border-rose-500/20 p-3 flex items-center gap-2 text-[10px] text-rose-400">
-        <ShieldAlert className="w-4 h-4" />
-        <span>Never pay in advance. Inspect the ticket PDF / details before sending money. Connect directly.</span>
-      </div>
-
-      {/* MESSAGES VIEW */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* Centered System Message */}
-        <div className="text-center">
-          <span className="bg-white/5 border border-white/5 px-3 py-1 rounded-full text-[9px] text-slate-500 font-bold uppercase">
-            Match Confirmed! Chat room active
-          </span>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {messages.map((m, i) => {
+            const me = m.sender_id === user?.id;
+            const row: CSSProperties = { display: 'flex', justifyContent: me ? 'flex-end' : 'flex-start' };
+            const bubble: CSSProperties = {
+              maxWidth: '78%', padding: '12px 15px', fontSize: 14.5, lineHeight: 1.5,
+              borderRadius: me ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+              ...(me ? { background: 'linear-gradient(140deg,#7c3aed,#a855f7)', color: '#fff', boxShadow: '0 10px 26px rgba(124,58,237,.4)' } : { background: 'rgba(255,255,255,.06)', border: '1px solid rgba(168,85,247,.2)', color: '#e6ddf7' }),
+            };
+            return (
+              <div key={m.id || i} style={row}>
+                <div style={bubble}>{m.content}
+                  <div style={{ fontSize: 11, marginTop: 6, color: me ? 'rgba(255,255,255,.7)' : '#8b7fa3' }}>{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                </div>
+              </div>
+            );
+          })}
+          <div ref={endRef} />
         </div>
 
-        {messages.map((m) => {
-          const isOwnMessage = m.sender_id === user?.id || m.sender_id === 'dev-user-id';
-          return (
-            <div 
-              key={m.id} 
-              className={`flex flex-col max-w-[70%] space-y-1 ${isOwnMessage ? 'ml-auto items-end' : 'mr-auto items-start'}`}
-            >
-              <div className={`p-3.5 rounded-2xl text-xs ${
-                isOwnMessage 
-                  ? 'bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white rounded-tr-none'
-                  : 'bg-slate-900/60 border border-white/5 text-slate-300 rounded-tl-none'
-              }`}>
-                {m.content}
-              </div>
-              <div className="flex items-center gap-1 text-[8px] text-slate-500 font-medium">
-                <span>{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                {isOwnMessage && <CheckCheck className="w-3 h-3 text-violet-500" />}
-              </div>
-            </div>
-          );
-        })}
-        <div ref={messagesEndRef} />
+        <div style={{ display: 'flex', gap: 10, padding: 14, borderTop: '1px solid rgba(168,85,247,.16)' }}>
+          <input value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && send()} placeholder="Write a message…" className="field" style={{ flex: 1, padding: '13px 16px', fontSize: 14.5 }} />
+          <button onClick={send} className="btn-violet" style={{ padding: '13px 22px', fontSize: 14 }}>Send</button>
+        </div>
       </div>
 
-      {/* REVEAL PHONE BANNER ACTION */}
-      <div className="p-4 border-t border-white/5 bg-slate-950/40 space-y-3">
-        {contactRevealed ? (
-          <div className="bg-violet-500/10 border border-violet-500/20 text-violet-400 p-3 rounded-xl flex items-center justify-between text-xs font-semibold">
-            <div className="flex items-center gap-2">
-              <Phone className="w-4 h-4 text-violet-400" />
-              <span>Contact Number: <strong>{otherUserPhone}</strong></span>
+      {/* Aside */}
+      <aside style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div className="glass-strong" style={{ padding: 24 }}>
+          <div className="font-display" style={{ fontWeight: 700, fontSize: 17, color: '#fff' }}>Contact details</div>
+          <p style={{ fontSize: 13.5, color: '#a396bb', lineHeight: 1.6, margin: '10px 0 16px' }}>Numbers are revealed to each other only. Settle over UPI or cash — we never handle money.</p>
+          {revealed ? (
+            <div style={{ padding: 16, borderRadius: 16, background: 'rgba(255,255,255,.06)', border: '1px solid rgba(168,85,247,.3)' }}>
+              <div style={{ fontSize: 12, color: '#c084fc', letterSpacing: '.14em', textTransform: 'uppercase' }}>Phone</div>
+              <div className="font-display" style={{ fontWeight: 700, fontSize: 20, color: '#fff', marginTop: 6 }}>{otherPhone || 'Shared in chat'}</div>
+              {otherPhone && <button onClick={copy} style={{ marginTop: 10, background: 'transparent', border: 'none', color: '#c084fc', fontSize: 12.5, cursor: 'pointer', padding: 0 }}>{copied ? 'Copied ✓' : 'Copy number'}</button>}
             </div>
-            <button 
-              onClick={copyToClipboard}
-              className="p-1.5 hover:bg-white/5 rounded-lg transition"
-              title="Copy"
-            >
-              {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-            </button>
-          </div>
-        ) : (
-          <div className="flex justify-between items-center bg-violet-500/10 border border-violet-500/20 text-violet-400 p-3.5 rounded-xl text-xs font-bold">
-            <span>Coordinate details over phone?</span>
-            <button
-              onClick={handleRevealContact}
-              className="px-3.5 py-1.5 bg-violet-600 text-white hover:bg-violet-500 rounded-lg text-[10px] uppercase tracking-wider font-extrabold transition"
-            >
-              Reveal Contact Number
-            </button>
-          </div>
-        )}
-
-        {/* INPUT FORM */}
-        <form onSubmit={handleSendMessage} className="flex gap-2">
-          <input 
-            type="text" 
-            placeholder="Type your message here..."
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            className="w-full input-glass text-xs py-3"
-            required
-          />
-          <button 
-            type="submit" 
-            className="btn-primary p-3 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-violet-500/20"
-          >
-            <Send className="w-4 h-4" />
-          </button>
-        </form>
-      </div>
-      </div>
-    </div>
+          ) : (
+            <button onClick={reveal} className="btn-shimmer" style={{ width: '100%', padding: 14, borderRadius: 14, fontSize: 14.5 }}>Reveal contact</button>
+          )}
+        </div>
+        <div style={{ padding: 22, borderRadius: 24, border: '1px solid rgba(168,85,247,.2)', background: 'rgba(255,255,255,.035)' }}>
+          <div className="font-display" style={{ fontWeight: 700, fontSize: 16, color: '#fff', marginBottom: 10 }}>Before you meet</div>
+          {SAFETY.map((t) => (
+            <div key={t} style={{ display: 'flex', gap: 9, padding: '6px 0', fontSize: 13.5, color: '#a396bb', lineHeight: 1.55 }}><span style={{ color: '#c084fc' }}>◆</span>{t}</div>
+          ))}
+        </div>
+      </aside>
+    </section>
   );
 }
