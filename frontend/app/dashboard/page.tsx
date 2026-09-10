@@ -4,12 +4,14 @@ import React, { useState, useEffect, CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '../../store/authStore';
 import { API_BASE } from '../../lib/api';
+import { useUiStore } from '../../store/uiStore';
+import { NewDashboard } from '../../components/new-ui/NewDashboard';
 
 const ACCENT: Record<string, string> = {
   train: '#38bdf8', bus: '#fbbf24', ipl: '#a855f7', cricket: '#34d399', concert: '#f472b6', event: '#c084fc',
 };
 
-export default function DashboardPage() {
+function ClassicDashboard() {
   const router = useRouter();
   const { isAuthenticated, user, token } = useAuthStore();
   const [tab, setTab] = useState<'My Listings' | 'Matches' | 'Alerts'>('My Listings');
@@ -166,6 +168,11 @@ export default function DashboardPage() {
       </div>
     </section>
   );
+}
+
+export default function Page() {
+  const mode = useUiStore((s) => s.mode);
+  return mode === 'new' ? <NewDashboard /> : <ClassicDashboard />;
 }
 
 function cap(s: string) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }

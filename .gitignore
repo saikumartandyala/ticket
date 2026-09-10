@@ -1,6 +1,43 @@
-/.antigravitycli
-/.claude
-/venv
+# ===== Secrets / environment =====
 .env
-backend/.env
-frontend/.env*.local
+**/.env
+.env.local
+**/.env*.local
+# keep the templates
+!.env.example
+!**/.env.example
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ===== Local database / uploads =====
+*.db
+*.sqlite3
+backend/static/uploads/
+mock_otp_log.txt
+
+# ===== Node / Next.js =====
+node_modules/
+.next/
+out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ===== Editors / tooling / OS =====
+/.claude
+/.antigravitycli
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log

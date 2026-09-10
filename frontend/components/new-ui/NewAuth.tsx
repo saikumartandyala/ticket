@@ -4,8 +4,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '../../store/authStore';
 import { API_BASE } from '../../lib/api';
-import { useUiStore } from '../../store/uiStore';
-import { NewAuth } from '../../components/new-ui/NewAuth';
 
 // Email-only (OTP + password are configured for email).
 const channel = 'email' as const;
@@ -23,6 +21,8 @@ type Step =
 const REGISTER_STEPS: Step[] = ['register-email', 'register-otp', 'register-password', 'register-name'];
 const NET_ERR = 'Could not reach the server. Please check your connection and try again.';
 
+const bri = "'Bricolage Grotesque', system-ui, sans-serif";
+
 async function parseError(response: Response, fallback: string): Promise<string> {
   try {
     const data = await response.json();
@@ -32,12 +32,7 @@ async function parseError(response: Response, fallback: string): Promise<string>
   return fallback;
 }
 
-export default function AuthPage() {
-  const mode = useUiStore((s) => s.mode);
-  return mode === 'new' ? <NewAuth /> : <ClassicAuth />;
-}
-
-function ClassicAuth() {
+export function NewAuth() {
   const router = useRouter();
   const { isAuthenticated, setAuth, token: storedToken } = useAuthStore();
 
@@ -190,52 +185,64 @@ function ClassicAuth() {
 
   return (
     <section style={{ maxWidth: 480, margin: '0 auto', padding: '70px 20px 100px' }}>
-      <div className="glass-strong" style={{ position: 'relative', padding: 34 }}>
+      <div
+        className="anim-rise"
+        style={{
+          position: 'relative',
+          padding: 34,
+          borderRadius: 28,
+          border: '1px solid rgba(37,99,235,.24)',
+          background: 'linear-gradient(160deg,#ffffff,#fbfcfe)',
+          backdropFilter: 'blur(22px)',
+          WebkitBackdropFilter: 'blur(22px)',
+          boxShadow: 'inset 0 0 80px rgba(37,99,235,.07), 0 30px 70px rgba(15,23,42,.14)',
+        }}
+      >
         {isRegister && (
           <>
             <div style={{ display: 'flex', gap: 8, marginBottom: 26 }}>
               {[0, 1, 2, 3].map((i) => (
-                <div key={i} style={{ flex: 1, height: 4, borderRadius: 99, background: i <= regIndex ? 'linear-gradient(90deg,#7c3aed,#c084fc)' : 'rgba(255,255,255,.1)', boxShadow: i <= regIndex ? '0 0 14px rgba(168,85,247,.7)' : 'none' }} />
+                <div key={i} style={{ flex: 1, height: 4, borderRadius: 99, background: i <= regIndex ? 'linear-gradient(90deg,#1e40af,#60a5fa)' : 'rgba(15,23,42,.1)', boxShadow: i <= regIndex ? '0 0 14px rgba(37,99,235,.7)' : 'none' }} />
               ))}
             </div>
-            <div style={{ fontSize: 12, letterSpacing: '.2em', textTransform: 'uppercase', color: '#c084fc' }}>Step {regIndex + 1} of 4</div>
+            <div style={{ fontSize: 12, letterSpacing: '.2em', textTransform: 'uppercase', color: '#2563eb' }}>Step {regIndex + 1} of 4</div>
           </>
         )}
-        <h1 className="font-display" style={{ fontWeight: 700, fontSize: 29, color: '#fff', letterSpacing: '-.03em', margin: `${isRegister ? 12 : 0}px 0 8px` }}>{copy[step].t}</h1>
-        <p style={{ color: '#9d90b6', fontSize: 14.5, lineHeight: 1.6, margin: '0 0 24px' }}>{copy[step].b}</p>
+        <h1 style={{ fontFamily: bri, fontWeight: 700, fontSize: 29, color: '#0f172a', letterSpacing: '-.03em', margin: `${isRegister ? 12 : 0}px 0 8px` }}>{copy[step].t}</h1>
+        <p style={{ color: '#6b7488', fontSize: 14.5, lineHeight: 1.6, margin: '0 0 24px' }}>{copy[step].b}</p>
 
-        {error && <div style={{ marginBottom: 18, padding: '11px 14px', fontSize: 13, background: 'rgba(244,63,94,.1)', border: '1px solid rgba(244,63,94,.25)', color: '#fda4af', borderRadius: 12 }}>{error}</div>}
+        {error && <div style={{ marginBottom: 18, padding: '11px 14px', fontSize: 13, background: 'rgba(244,63,94,.08)', border: '1px solid rgba(244,63,94,.25)', color: '#b91c1c', borderRadius: 12 }}>{error}</div>}
 
         {step === 'choose' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <button onClick={() => { setPassword(''); goto('signin'); }} className="btn-shimmer" style={{ width: '100%', padding: 15, borderRadius: 16, fontSize: 15.5 }}>Sign in</button>
-            <button onClick={() => { setPassword(''); setConfirmPassword(''); setName(''); setOtp(''); goto('register-email'); }} className="btn-ghost" style={{ width: '100%', padding: 15, borderRadius: 16, fontSize: 15.5 }}>Create account</button>
+            <button onClick={() => { setPassword(''); goto('signin'); }} style={btnPrimary} {...lift}>Sign in</button>
+            <button onClick={() => { setPassword(''); setConfirmPassword(''); setName(''); setOtp(''); goto('register-email'); }} style={btnGhost} {...ghostHover}>Create account</button>
           </div>
         )}
 
         {step === 'signin' && (
           <form onSubmit={handleSignIn} noValidate>
-            <input className="field" type="email" placeholder="you@email.com" value={identifier} onChange={(e) => setIdentifier(e.target.value)} style={{ marginBottom: 12 }} required />
-            <input className="field" type="password" placeholder="Your password" value={password} onChange={(e) => setPassword(e.target.value)} style={{ marginBottom: 16 }} required />
-            <button type="submit" disabled={loading} className="btn-shimmer" style={{ width: '100%', padding: 15, borderRadius: 16, fontSize: 15.5 }}>{loading ? 'Signing in…' : 'Sign in'}</button>
+            <input type="email" placeholder="you@email.com" value={identifier} onChange={(e) => setIdentifier(e.target.value)} style={{ ...fieldStyle, marginBottom: 12 }} {...focusRing} required />
+            <input type="password" placeholder="Your password" value={password} onChange={(e) => setPassword(e.target.value)} style={{ ...fieldStyle, marginBottom: 16 }} {...focusRing} required />
+            <button type="submit" disabled={loading} style={btnPrimary} {...lift}>{loading ? 'Signing in…' : 'Sign in'}</button>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 16, fontSize: 13 }}>
               <button type="button" onClick={() => goto('choose')} style={linkBtn}>← Back</button>
-              <button type="button" onClick={handleForgotPassword} style={{ ...linkBtn, color: '#c084fc' }}>Forgot password?</button>
+              <button type="button" onClick={handleForgotPassword} style={{ ...linkBtn, color: '#2563eb' }}>Forgot password?</button>
             </div>
-            <div style={{ textAlign: 'center', marginTop: 14, fontSize: 13, color: '#8b7fa3' }}>
+            <div style={{ textAlign: 'center', marginTop: 14, fontSize: 13, color: '#6b7488' }}>
               New here?{' '}
-              <button type="button" onClick={() => { setPassword(''); goto('register-email'); }} style={{ ...linkBtn, color: '#c084fc' }}>Create an account</button>
+              <button type="button" onClick={() => { setPassword(''); goto('register-email'); }} style={{ ...linkBtn, color: '#2563eb' }}>Create an account</button>
             </div>
           </form>
         )}
 
         {step === 'register-email' && (
           <form onSubmit={handleRegisterEmail} noValidate>
-            <input className="field" type="email" placeholder="you@email.com" value={identifier} onChange={(e) => setIdentifier(e.target.value)} style={{ marginBottom: 20 }} required />
-            <button type="submit" disabled={loading} className="btn-shimmer" style={{ width: '100%', padding: 15, borderRadius: 16, fontSize: 15.5 }}>{loading ? 'Please wait…' : 'Send code'}</button>
+            <input type="email" placeholder="you@email.com" value={identifier} onChange={(e) => setIdentifier(e.target.value)} style={{ ...fieldStyle, marginBottom: 20 }} {...focusRing} required />
+            <button type="submit" disabled={loading} style={btnPrimary} {...lift}>{loading ? 'Please wait…' : 'Send code'}</button>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 16, fontSize: 13 }}>
               <button type="button" onClick={() => goto('choose')} style={linkBtn}>← Back</button>
-              <button type="button" onClick={() => { setPassword(''); goto('signin'); }} style={{ ...linkBtn, color: '#c084fc' }}>Already have an account?</button>
+              <button type="button" onClick={() => { setPassword(''); goto('signin'); }} style={{ ...linkBtn, color: '#2563eb' }}>Already have an account?</button>
             </div>
           </form>
         )}
@@ -243,43 +250,101 @@ function ClassicAuth() {
         {step === 'register-otp' && (
           <form onSubmit={handleRegisterOtp} noValidate>
             <OtpBoxes value={otp} onChange={setOtp} />
-            <button type="submit" disabled={loading} className="btn-shimmer" style={{ width: '100%', marginTop: 20, padding: 15, borderRadius: 16, fontSize: 15.5 }}>{loading ? 'Verifying…' : 'Verify code'}</button>
+            <button type="submit" disabled={loading} style={{ ...btnPrimary, marginTop: 20 }} {...lift}>{loading ? 'Verifying…' : 'Verify code'}</button>
             <button type="button" onClick={() => goto('register-email')} style={{ ...linkBtn, marginTop: 16, display: 'block' }}>← Change email</button>
           </form>
         )}
 
         {step === 'register-password' && (
           <form onSubmit={handleRegisterPassword} noValidate>
-            <input className="field" type="password" placeholder="Password (min 8 chars)" value={password} onChange={(e) => setPassword(e.target.value)} style={{ marginBottom: 12 }} required />
-            <input className="field" type="password" placeholder="Retype password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} style={{ marginBottom: 20 }} required />
-            <button type="submit" disabled={loading} className="btn-shimmer" style={{ width: '100%', padding: 15, borderRadius: 16, fontSize: 15.5 }}>{loading ? 'Saving…' : 'Continue'}</button>
+            <input type="password" placeholder="Password (min 8 chars)" value={password} onChange={(e) => setPassword(e.target.value)} style={{ ...fieldStyle, marginBottom: 12 }} {...focusRing} required />
+            <input type="password" placeholder="Retype password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} style={{ ...fieldStyle, marginBottom: 20 }} {...focusRing} required />
+            <button type="submit" disabled={loading} style={btnPrimary} {...lift}>{loading ? 'Saving…' : 'Continue'}</button>
           </form>
         )}
 
         {step === 'register-name' && (
           <form onSubmit={handleRegisterName} noValidate>
-            <input className="field" type="text" placeholder="Aarav Sharma" value={name} onChange={(e) => setName(e.target.value)} style={{ marginBottom: 20 }} required />
-            <button type="submit" disabled={loading} className="btn-shimmer" style={{ width: '100%', padding: 15, borderRadius: 16, fontSize: 15.5 }}>{loading ? 'Finishing…' : 'Finish setup'}</button>
+            <input type="text" placeholder="Aarav Sharma" value={name} onChange={(e) => setName(e.target.value)} style={{ ...fieldStyle, marginBottom: 20 }} {...focusRing} required />
+            <button type="submit" disabled={loading} style={btnPrimary} {...lift}>{loading ? 'Finishing…' : 'Finish setup'}</button>
           </form>
         )}
 
         {step === 'reset-otp' && (
           <form onSubmit={handleResetPassword} noValidate>
             <OtpBoxes value={otp} onChange={setOtp} />
-            <input className="field" type="password" placeholder="New password (min 8)" value={password} onChange={(e) => setPassword(e.target.value)} style={{ margin: '16px 0 12px' }} required />
-            <input className="field" type="password" placeholder="Retype new password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} style={{ marginBottom: 20 }} required />
-            <button type="submit" disabled={loading} className="btn-shimmer" style={{ width: '100%', padding: 15, borderRadius: 16, fontSize: 15.5 }}>{loading ? 'Saving…' : 'Reset password'}</button>
+            <input type="password" placeholder="New password (min 8)" value={password} onChange={(e) => setPassword(e.target.value)} style={{ ...fieldStyle, margin: '16px 0 12px' }} {...focusRing} required />
+            <input type="password" placeholder="Retype new password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} style={{ ...fieldStyle, marginBottom: 20 }} {...focusRing} required />
+            <button type="submit" disabled={loading} style={btnPrimary} {...lift}>{loading ? 'Saving…' : 'Reset password'}</button>
             <button type="button" onClick={() => goto('signin')} style={{ ...linkBtn, marginTop: 16, display: 'block' }}>← Back to sign in</button>
           </form>
         )}
 
-        <div style={{ textAlign: 'center', marginTop: 18, fontSize: 13.5, color: '#8b7fa3' }}>Email only. Sign in with your password, or create an account in seconds.</div>
+        <div style={{ textAlign: 'center', marginTop: 18, fontSize: 13.5, color: '#6b7488' }}>Email only. Sign in with your password, or create an account in seconds.</div>
       </div>
     </section>
   );
 }
 
-const linkBtn: React.CSSProperties = { background: 'transparent', border: 'none', color: '#a99cc0', fontSize: 13, cursor: 'pointer', padding: 0 };
+const fieldStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '15px 16px',
+  borderRadius: 14,
+  border: '1px solid rgba(37,99,235,.3)',
+  background: '#f6f8fd',
+  color: '#0f172a',
+  fontSize: 15,
+  fontFamily: 'inherit',
+  outline: 'none',
+};
+
+const btnPrimary: React.CSSProperties = {
+  width: '100%',
+  padding: 15,
+  borderRadius: 16,
+  border: '1px solid rgba(191,219,254,.5)',
+  color: '#ffffff',
+  fontWeight: 600,
+  fontSize: 15.5,
+  cursor: 'pointer',
+  background: 'linear-gradient(100deg,#1e40af,#2563eb,#60a5fa,#1e40af)',
+  backgroundSize: '200% 100%',
+  animation: 'lmpShimmer 6s linear infinite',
+  boxShadow: '0 14px 40px rgba(30,64,175,.45)',
+  transition: 'transform .18s ease',
+};
+
+const btnGhost: React.CSSProperties = {
+  width: '100%',
+  padding: 15,
+  borderRadius: 16,
+  border: '1px solid rgba(37,99,235,.3)',
+  background: '#ffffff',
+  color: '#1e40af',
+  fontWeight: 600,
+  fontSize: 15.5,
+  cursor: 'pointer',
+  transition: 'background .18s ease, transform .18s ease',
+};
+
+const linkBtn: React.CSSProperties = { background: 'transparent', border: 'none', color: '#5b6478', fontSize: 13, cursor: 'pointer', padding: 0 };
+
+// Focus ring for text inputs, matching the design's blue glow.
+const focusRing = {
+  onFocus: (e: React.FocusEvent<HTMLInputElement>) => { e.currentTarget.style.borderColor = '#2563eb'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(37,99,235,.22)'; },
+  onBlur: (e: React.FocusEvent<HTMLInputElement>) => { e.currentTarget.style.borderColor = 'rgba(37,99,235,.3)'; e.currentTarget.style.boxShadow = 'none'; },
+};
+
+// Subtle lift on the primary/shimmer buttons (design: translateY(-2px) on hover).
+const lift = {
+  onMouseEnter: (e: React.MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.transform = 'translateY(-2px)'; },
+  onMouseLeave: (e: React.MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.transform = 'none'; },
+};
+
+const ghostHover = {
+  onMouseEnter: (e: React.MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.background = 'rgba(37,99,235,.06)'; e.currentTarget.style.transform = 'translateY(-2px)'; },
+  onMouseLeave: (e: React.MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.transform = 'none'; },
+};
 
 function OtpBoxes({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const refs = useRef<(HTMLInputElement | null)[]>([]);
@@ -312,9 +377,9 @@ function OtpBoxes({ value, onChange }: { value: string; onChange: (v: string) =>
           onChange={(e) => set(i, e.target.value)}
           onKeyDown={(e) => onKey(i, e)}
           onPaste={onPaste}
-          style={{ flex: 1, minWidth: 0, textAlign: 'center', fontFamily: 'Outfit', fontWeight: 700, fontSize: 22, color: '#fff', padding: '14px 0', borderRadius: 14, border: '1px solid rgba(168,85,247,.35)', background: 'rgba(255,255,255,.05)', outline: 'none' }}
-          onFocus={(e) => { e.target.style.borderColor = '#c084fc'; e.target.style.boxShadow = '0 0 0 3px rgba(168,85,247,.25)'; }}
-          onBlur={(e) => { e.target.style.borderColor = 'rgba(168,85,247,.35)'; e.target.style.boxShadow = 'none'; }}
+          style={{ flex: 1, minWidth: 0, textAlign: 'center', fontFamily: bri, fontWeight: 700, fontSize: 22, color: '#0f172a', padding: '14px 0', borderRadius: 14, border: '1px solid rgba(37,99,235,.35)', background: '#f6f8fd', outline: 'none' }}
+          onFocus={(e) => { e.target.style.borderColor = '#2563eb'; e.target.style.boxShadow = '0 0 0 3px rgba(37,99,235,.25)'; }}
+          onBlur={(e) => { e.target.style.borderColor = 'rgba(37,99,235,.35)'; e.target.style.boxShadow = 'none'; }}
         />
       ))}
     </div>

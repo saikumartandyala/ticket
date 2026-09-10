@@ -4,6 +4,8 @@ import React, { useState, useEffect, useRef, CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
 import { API_BASE } from '../lib/api';
 import { useTilt } from '../lib/useTilt';
+import { useUiStore } from '../store/uiStore';
+import { NewLanding } from '../components/new-ui/NewLanding';
 
 const ACCENT: Record<string, string> = {
   train: '#38bdf8', bus: '#fbbf24', ipl: '#a855f7', cricket: '#34d399', concert: '#f472b6', event: '#c084fc',
@@ -71,7 +73,7 @@ function decorate(l: any) {
   };
 }
 
-export default function LandingPage() {
+function ClassicLanding() {
   const router = useRouter();
   const heroInner = useTilt<HTMLDivElement>(11, 8);
 
@@ -383,6 +385,11 @@ export default function LandingPage() {
       </footer>
     </div>
   );
+}
+
+export default function Page() {
+  const mode = useUiStore((s) => s.mode);
+  return mode === 'new' ? <NewLanding /> : <ClassicLanding />;
 }
 
 const arrowStyle: CSSProperties = { width: 44, height: 44, borderRadius: 999, border: '1px solid rgba(168,85,247,.3)', background: 'rgba(255,255,255,.04)', color: '#d8c9ff', fontSize: 17, cursor: 'pointer' };

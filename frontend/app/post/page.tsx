@@ -4,6 +4,8 @@ import React, { useState, CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '../../store/authStore';
 import { API_BASE } from '../../lib/api';
+import { useUiStore } from '../../store/uiStore';
+import { NewPost } from '../../components/new-ui/NewPost';
 
 const ACCENT: Record<string, string> = {
   Train: '#38bdf8', Bus: '#fbbf24', IPL: '#a855f7', Cricket: '#34d399', Concert: '#f472b6', Event: '#c084fc',
@@ -13,8 +15,17 @@ const CAT_CARDS = [
   ['Train', 'PNR or e-ticket'], ['Bus', 'Seat or sleeper'], ['IPL', 'Stadium entry'],
   ['Cricket', 'Intl. or domestic'], ['Concert', 'Live music pass'], ['Event', 'Conference, expo'],
 ] as const;
+// SVG stroke icons (from the new-UI design) — one per category.
+const ICON_PATHS: Record<string, string> = {
+  Train: 'M5 15V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2Zm0-6h14M9 21l1.5-2m4.5 2-1.5-2M9.5 13h.01m4.99 0h.01',
+  Bus: 'M4 16V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10M4 16h16M4 16v2h3v-2m10 0v2h3v-2M6 8h12v4H6zM7.5 19.5h.01m8.99 0h.01',
+  IPL: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm-6.4 2.6c2 1.4 3.2 3.7 3.2 6.4s-1.2 5-3.2 6.4m12.8-12.8c-2 1.4-3.2 3.7-3.2 6.4s1.2 5 3.2 6.4',
+  Cricket: 'M15.5 4.5 19.5 8.5M14 6l4 4M5.5 18.5 13 11m-7.5 7.5-1.5 3 3-1.5M18 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z',
+  Concert: 'M9 18V6l10-2v12M9 18a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0Zm10-2a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0ZM9 9l10-2',
+  Event: 'M8 3v3m8-3v3M4 9h16M5 6h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1Zm3.5 7.5h.01M12 13.5h.01m3.49 0h.01M8.5 17h.01M12 17h.01',
+};
 
-export default function PostPage() {
+function ClassicPost() {
   const router = useRouter();
   const { isAuthenticated, token } = useAuthStore();
 
@@ -111,7 +122,11 @@ export default function PostPage() {
             const selected = category === label;
             return (
               <div key={label} onClick={() => setCategory(label)} className="cat-card" style={{ padding: 24, borderRadius: 22, cursor: 'pointer', border: `1px solid ${selected ? 'rgba(192,132,252,.7)' : 'rgba(168,85,247,.2)'}`, background: 'linear-gradient(160deg,rgba(255,255,255,.06),rgba(255,255,255,.02))', backdropFilter: 'blur(14px)', boxShadow: selected ? '0 0 40px rgba(168,85,247,.35), inset 0 0 60px rgba(124,58,237,.16)' : 'inset 0 0 60px rgba(124,58,237,.16), 0 18px 44px rgba(0,0,0,.45)', transformStyle: 'preserve-3d' }}>
-                <div style={{ width: 44, height: 44, borderRadius: 14, background: `linear-gradient(145deg,${ACCENT[label]},#7c3aed)`, boxShadow: `0 10px 26px ${ACCENT[label]}66, inset 0 1px 0 rgba(255,255,255,.5)` }} />
+                <div style={{ width: 44, height: 44, borderRadius: 14, background: `linear-gradient(145deg,${ACCENT[label]},#7c3aed)`, boxShadow: `0 10px 26px ${ACCENT[label]}66, inset 0 1px 0 rgba(255,255,255,.5)`, display: 'grid', placeItems: 'center' }}>
+                  <svg viewBox="0 0 24 24" width={24} height={24} fill="none" stroke="#fff" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+                    <path d={ICON_PATHS[label]} />
+                  </svg>
+                </div>
                 <div className="font-display" style={{ fontWeight: 700, fontSize: 18, color: '#fff', marginTop: 16 }}>{label}</div>
                 <div style={{ fontSize: 12.5, color: '#9d90b6', marginTop: 5 }}>{hint}</div>
               </div>
@@ -163,4 +178,9 @@ export default function PostPage() {
       </div>
     </section>
   );
+}
+
+export default function PostPage() {
+  const mode = useUiStore((s) => s.mode);
+  return mode === 'new' ? <NewPost /> : <ClassicPost />;
 }

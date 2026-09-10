@@ -4,6 +4,8 @@ import React, { useState, useEffect, useRef, CSSProperties } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuthStore } from '../../../store/authStore';
 import { API_BASE, WS_BASE } from '../../../lib/api';
+import { useUiStore } from '../../../store/uiStore';
+import { NewChat } from '../../../components/new-ui/NewChat';
 
 const SAFETY = [
   'Meet in a public, well-lit place near the venue or station.',
@@ -12,7 +14,7 @@ const SAFETY = [
   'Report anyone who asks you to pay outside the agreed amount.',
 ];
 
-export default function ChatPage() {
+function ClassicChat(props: any) {
   const { matchId } = useParams();
   const router = useRouter();
   const { isAuthenticated, user, token } = useAuthStore();
@@ -157,4 +159,9 @@ export default function ChatPage() {
       </aside>
     </section>
   );
+}
+
+export default function Page(props: any) {
+  const mode = useUiStore((s) => s.mode);
+  return mode === 'new' ? <NewChat {...props} /> : <ClassicChat {...props} />;
 }

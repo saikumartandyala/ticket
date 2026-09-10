@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore } from '../store/authStore';
+import { useUiStore } from '../store/uiStore';
 
 const NAV = [
   { label: 'Home', path: '/' },
@@ -15,6 +16,7 @@ export const Navbar: React.FC = () => {
   const pathname = usePathname();
   const router = useRouter();
   const { isAuthenticated, user, logout } = useAuthStore();
+  const toggle = useUiStore((s) => s.toggle);
 
   const pill = (active: boolean): React.CSSProperties => ({
     padding: '8px 14px',
@@ -74,48 +76,60 @@ export const Navbar: React.FC = () => {
           ))}
         </nav>
 
-        {/* Right actions */}
+        {/* Switch to the new UI */}
+        <button onClick={toggle} title="Switch to the new look" style={{ flex: '0 0 auto', padding: '7px 12px', borderRadius: 999, border: '1px solid rgba(168,85,247,.3)', background: 'transparent', color: '#a99cc0', fontSize: 12.5, cursor: 'pointer', whiteSpace: 'nowrap' }}>New UI</button>
+
+        {/* Right side: CTA + account, grouped so the user menu sits at the far right */}
         {isAuthenticated ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: '0 0 auto' }}>
-            <div
-              title={user?.name || 'You'}
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 12,
-                background: 'linear-gradient(145deg,#c084fc,#7c3aed)',
-                display: 'grid',
-                placeItems: 'center',
-                fontFamily: 'Outfit',
-                fontWeight: 700,
-                color: '#fff',
-                fontSize: 13,
-                boxShadow: '0 6px 18px rgba(124,58,237,.5)',
-              }}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, flex: '0 0 auto' }}>
+            <Link
+              href="/post"
+              className="btn-shimmer"
+              style={{ padding: '9px 18px', fontSize: 13, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
             >
-              {user?.name ? user.name.split(' ').map((x) => x[0]).join('').slice(0, 2).toUpperCase() : 'U'}
+              List a ticket
+            </Link>
+            {/* divider separating page actions from the account menu */}
+            <div style={{ width: 1, height: 26, background: 'rgba(168,85,247,.22)' }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div
+                title={user?.name || 'You'}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 11,
+                  background: 'linear-gradient(145deg,#c084fc,#7c3aed)',
+                  display: 'grid',
+                  placeItems: 'center',
+                  fontFamily: 'Outfit',
+                  fontWeight: 700,
+                  color: '#fff',
+                  fontSize: 13,
+                  boxShadow: '0 6px 18px rgba(124,58,237,.5)',
+                }}
+              >
+                {user?.name ? user.name.split(' ').map((x) => x[0]).join('').slice(0, 2).toUpperCase() : 'U'}
+              </div>
+              <button
+                onClick={() => { logout(); router.push('/'); }}
+                style={{ background: 'transparent', border: 'none', color: '#a99cc0', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}
+              >
+                Log out
+              </button>
             </div>
-            <button
-              onClick={() => { logout(); router.push('/'); }}
-              style={{ background: 'transparent', border: 'none', color: '#a99cc0', fontSize: 13, cursor: 'pointer' }}
-            >
-              Log out
-            </button>
           </div>
         ) : (
-          pathname !== '/auth' && (
-            <Link href="/auth" style={pill(false)}>Sign in</Link>
-          )
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: '0 0 auto' }}>
+            {pathname !== '/auth' && <Link href="/auth" style={pill(false)}>Sign in</Link>}
+            <Link
+              href="/post"
+              className="btn-shimmer"
+              style={{ padding: '9px 18px', fontSize: 13, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+            >
+              List a ticket
+            </Link>
+          </div>
         )}
-
-        {/* Shimmer CTA */}
-        <Link
-          href="/post"
-          className="btn-shimmer"
-          style={{ flex: '0 0 auto', padding: '9px 18px', fontSize: 13, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
-        >
-          List a ticket
-        </Link>
       </div>
     </header>
   );

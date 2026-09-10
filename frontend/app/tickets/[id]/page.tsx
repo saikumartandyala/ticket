@@ -5,6 +5,8 @@ import { useParams, useRouter } from 'next/navigation';
 import { useAuthStore } from '../../../store/authStore';
 import { API_BASE } from '../../../lib/api';
 import { useTilt } from '../../../lib/useTilt';
+import { useUiStore } from '../../../store/uiStore';
+import { NewDetail } from '../../../components/new-ui/NewDetail';
 
 const money = (n: number) => '₹' + n.toLocaleString('en-IN');
 
@@ -22,7 +24,7 @@ const SAFETY = [
   'Report anyone who asks you to pay outside the agreed amount.',
 ];
 
-export default function TicketDetailPage() {
+function ClassicDetail(props: any) {
   const { id } = useParams();
   const router = useRouter();
   const { isAuthenticated, token } = useAuthStore();
@@ -149,4 +151,9 @@ export default function TicketDetailPage() {
       </div>
     </section>
   );
+}
+
+export default function Page(props: any) {
+  const mode = useUiStore((s) => s.mode);
+  return mode === 'new' ? <NewDetail {...props} /> : <ClassicDetail {...props} />;
 }

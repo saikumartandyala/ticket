@@ -3,6 +3,8 @@
 import React, { useState, useEffect, Suspense, CSSProperties } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { API_BASE } from '../../lib/api';
+import { useUiStore } from '../../store/uiStore';
+import { NewBrowse } from '../../components/new-ui/NewBrowse';
 
 const ACCENT: Record<string, string> = {
   train: '#38bdf8', bus: '#fbbf24', ipl: '#a855f7', cricket: '#34d399', concert: '#f472b6', event: '#c084fc',
@@ -131,10 +133,15 @@ function BrowseContent() {
 
 function cap(s: string) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
-export default function BrowseTicketsPage() {
+function ClassicBrowse() {
   return (
     <Suspense fallback={<div style={{ padding: 48, textAlign: 'center', color: '#9d90b6' }}>Loading listings…</div>}>
       <BrowseContent />
     </Suspense>
   );
+}
+
+export default function Page() {
+  const mode = useUiStore((s) => s.mode);
+  return mode === 'new' ? <NewBrowse /> : <ClassicBrowse />;
 }
