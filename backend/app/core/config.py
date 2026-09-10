@@ -31,15 +31,14 @@ class Settings(BaseSettings):
     MSG91_API_KEY: Optional[str] = None
     MSG91_TEMPLATE_ID: Optional[str] = None  # SMS OTP template (not currently used - email only)
 
-    # Gmail SMTP — used to send OTP emails. Requires a Google Account with
-    # 2-Step Verification enabled and an App Password generated at
-    # https://myaccount.google.com/apppasswords (NOT the normal Gmail
-    # password — Gmail rejects SMTP logins with the account password).
-    SMTP_HOST: str = "smtp.gmail.com"
-    SMTP_PORT: int = 587
-    EMAIL_USER: Optional[str] = None  # your Gmail address
-    EMAIL_PASS: Optional[str] = None  # the 16-character App Password
-    EMAIL_FROM: str = "noreply@lastminutepass.in"
+    # Brevo (formerly Sendinblue) transactional email API — used to send OTP
+    # emails. Create an API key at https://app.brevo.com/settings/keys/api and
+    # add a verified sender at https://app.brevo.com/senders (the BREVO_FROM_EMAIL
+    # must be a verified sender or belong to a verified/authenticated domain,
+    # otherwise Brevo rejects the send). Falls back to a console/file mock when
+    # BREVO_API_KEY is unset, so local testing needs no credentials.
+    BREVO_API_KEY: Optional[str] = None
+    BREVO_FROM_EMAIL: str = "noreply@lastminutepass.in"
     EMAIL_FROM_NAME: str = "LastMinutePass"
     
     ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:8000"]
