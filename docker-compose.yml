@@ -3,7 +3,7 @@
 # you already run separately — this file does NOT run its own nginx.
 #
 # Routing works via nginx-proxy's VIRTUAL_PATH feature: both frontend and
-# backend share the same VIRTUAL_HOST (tic.fe-zzz.com), and nginx-proxy
+# backend share the same VIRTUAL_HOST (tick.fe-zzz.com), and nginx-proxy
 # routes by path prefix between them — frontend gets "/" (the default when
 # no VIRTUAL_PATH is set), backend gets VIRTUAL_PATH=/api/, which also
 # covers /api/v1/ws/... for the websocket since it's nested under /api/.
@@ -71,7 +71,7 @@ services:
       - MSG91_API_KEY=${MSG91_API_KEY:-}
       - MSG91_TEMPLATE_ID=${MSG91_TEMPLATE_ID:-}
       - BREVO_API_KEY=${BREVO_API_KEY:-}
-      - BREVO_FROM_EMAIL=${BREVO_FROM_EMAIL:-noreply@tic.fe-zzz.com}
+      - BREVO_FROM_EMAIL=${BREVO_FROM_EMAIL:-noreply@tick.fe-zzz.com}
       - EMAIL_FROM_NAME=${EMAIL_FROM_NAME:-LastMinutePass}
       - GEONAMES_USERNAME=${GEONAMES_USERNAME:-}
       - RAILRADAR_API_KEY=${RAILRADAR_API_KEY:-}
