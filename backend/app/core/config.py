@@ -40,6 +40,13 @@ class Settings(BaseSettings):
     BREVO_API_KEY: Optional[str] = None
     BREVO_FROM_EMAIL: str = "noreply@lastminutepass.in"
     EMAIL_FROM_NAME: str = "LastMinutePass"
+
+    # Lookup APIs (autocomplete). The backend proxies these so the credentials
+    # never reach the browser. Values come from .env.
+    #  - GeoNames: city/town suggestions (free web service username).
+    #  - RailRadar: railway station suggestions (bearer API key).
+    GEONAMES_USERNAME: Optional[str] = None
+    RAILRADAR_API_KEY: Optional[str] = None
     
     ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:8000"]
     

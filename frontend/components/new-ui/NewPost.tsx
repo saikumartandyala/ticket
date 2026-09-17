@@ -4,6 +4,7 @@ import React, { useState, CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '../../store/authStore';
 import { API_BASE } from '../../lib/api';
+import Autocomplete from '../Autocomplete';
 
 const bri = "'Bricolage Grotesque', system-ui, sans-serif";
 
@@ -152,7 +153,11 @@ export const NewPost: React.FC = () => {
           {fields.map(([label, ph, val, setter, type]) => (
             <div key={label}>
               <div style={{ fontSize: 12, letterSpacing: '.14em', textTransform: 'uppercase', color: '#2563eb', marginBottom: 8 }}>{label}</div>
-              <input type={type} placeholder={ph} value={val} onChange={(e) => setter(e.target.value)} onFocus={focusIn} onBlur={focusOut} style={inputBase} />
+              {(label === 'From' || label === 'To') ? (
+                <Autocomplete theme="light" kind={category === 'Train' ? 'station' : 'city'} value={val} onChange={setter} placeholder={ph} />
+              ) : (
+                <input type={type} placeholder={ph} value={val} onChange={(e) => setter(e.target.value)} onFocus={focusIn} onBlur={focusOut} style={inputBase} />
+              )}
             </div>
           ))}
           <div style={{ gridColumn: '1 / -1' }}>

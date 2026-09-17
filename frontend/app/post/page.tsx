@@ -6,6 +6,7 @@ import { useAuthStore } from '../../store/authStore';
 import { API_BASE } from '../../lib/api';
 import { useUiStore } from '../../store/uiStore';
 import { NewPost } from '../../components/new-ui/NewPost';
+import Autocomplete from '../../components/Autocomplete';
 
 const ACCENT: Record<string, string> = {
   Train: '#38bdf8', Bus: '#fbbf24', IPL: '#a855f7', Cricket: '#34d399', Concert: '#f472b6', Event: '#c084fc',
@@ -141,7 +142,11 @@ function ClassicPost() {
           {fields.map(([label, ph, val, setter, type]) => (
             <div key={label}>
               <div style={{ fontSize: 12, letterSpacing: '.14em', textTransform: 'uppercase', color: '#c084fc', marginBottom: 8 }}>{label}</div>
-              <input className="field" type={type} placeholder={ph} value={val} onChange={(e) => setter(e.target.value)} style={{ padding: '14px 15px', fontSize: 14.5 }} />
+              {(label === 'From' || label === 'To') ? (
+                <Autocomplete theme="dark" kind={category === 'Train' ? 'station' : 'city'} value={val} onChange={setter} placeholder={ph} />
+              ) : (
+                <input className="field" type={type} placeholder={ph} value={val} onChange={(e) => setter(e.target.value)} style={{ padding: '14px 15px', fontSize: 14.5 }} />
+              )}
             </div>
           ))}
           <div style={{ gridColumn: '1 / -1' }}>

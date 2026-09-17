@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1 import auth, listings, matches, websocket, search
+from app.api.v1 import auth, listings, matches, websocket, search, lookup
 
 api_router = APIRouter()
 
@@ -8,3 +8,4 @@ api_router.include_router(listings.router, prefix="/listings", tags=["listings"]
 api_router.include_router(matches.router, tags=["matches_alerts_reviews"])
 api_router.include_router(websocket.router, tags=["websockets"])
 api_router.include_router(search.router, prefix="/search", tags=["search"])
+api_router.include_router(lookup.router, tags=["lookup"])
