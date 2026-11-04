@@ -71,8 +71,8 @@ class Settings(BaseSettings):
     # otherwise Brevo rejects the send). Falls back to a console/file mock when
     # BREVO_API_KEY is unset, so local testing needs no credentials.
     BREVO_API_KEY: Optional[str] = None
-    BREVO_FROM_EMAIL: str = "noreply@lastminutepass.in"
-    EMAIL_FROM_NAME: str = "LastMinutePass"
+    BREVO_FROM_EMAIL: str = "noreply@tickorbit.in"
+    EMAIL_FROM_NAME: str = "TickOrbit"
 
     # Lookup APIs (autocomplete). The backend proxies these so the credentials
     # never reach the browser. Values come from .env.

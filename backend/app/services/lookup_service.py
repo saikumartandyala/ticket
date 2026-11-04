@@ -2,7 +2,7 @@ import logging
 import httpx
 from app.core.config import settings
 
-logger = logging.getLogger("lastminutepass.services")
+logger = logging.getLogger("app.lookup")
 
 # secure.geonames.org has a valid HTTPS cert (plain api.geonames.org does not).
 GEONAMES_URL = "https://secure.geonames.org/searchJSON"

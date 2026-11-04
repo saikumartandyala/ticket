@@ -2,14 +2,14 @@ import logging
 from datetime import datetime
 from app.core.config import settings
 
-logger = logging.getLogger("lastminutepass.services")
+logger = logging.getLogger("app.sms")
 
 async def send_otp_sms(phone: str, otp: str) -> bool:
     """
     Sends an OTP code via SMS. 
     If MSG91 API key is not configured, logs to console (and dummy file) for easy local testing.
     """
-    msg = f"Your LastMinutePass OTP is: {otp}. Valid for 10 minutes."
+    msg = f"Your TickOrbit sign-in code is {otp}. It expires in 10 minutes. Never share it."
     
     if not settings.MSG91_API_KEY:
         if settings.is_production:

@@ -1,0 +1,17 @@
+# Never upload local-only files (secrets, local DBs, keys, caches, design sources)
+**/.env
+**/.env.*
+!**/.env.example
+**/*.db
+**/*.sqlite3
+**/mock_otp_log.txt
+**/__pycache__/
+backend/static/uploads/
+backend/scripts/
+certs/
+design/
+venv/
+.venv/
+**/node_modules/
+**/.next/
+.claude/

@@ -80,8 +80,8 @@ async def check_seeker_alerts_for_listing(listing_id: str, db: AsyncSession) -> 
         if user and user.notification_prefs.get("sms", True):
             await send_match_notification(
                 phone=user.phone,
-                title="LastMinutePass Match",
-                content=f"Ticket Match Found! {listing.title} is available for ₹{listing.asking_price}. Open LastMinutePass app to grab it!"
+                title="TickOrbit match",
+                content=f"Ticket Match Found! {listing.title} is available for ₹{listing.asking_price}. Open TickOrbit to grab it!"
             )
             
         # Update alert firing metrics

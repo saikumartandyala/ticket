@@ -49,3 +49,9 @@ backend/app/core/__pycache__/config.cpython-314.pyc
 certs/
 *.pem
 design/preview.png
+
+# Production settings (secrets) - never commit
+**/.env.production
+
+# Supabase CLI local cache
+supabase/.temp/

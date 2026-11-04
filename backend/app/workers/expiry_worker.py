@@ -57,7 +57,7 @@ async def _send_expiry_warnings() -> int:
             if user.notification_prefs.get("sms", True):
                 await send_match_notification(
                     phone=user.phone,
-                    title="LastMinutePass Listing Expiring",
+                    title="TickOrbit listing expiring",
                     content=f"Your listing '{listing.title}' expires in under 2 hours. Manage it in the app.",
                 )
 

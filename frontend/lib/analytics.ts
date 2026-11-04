@@ -74,7 +74,7 @@ function excluded(path: string) {
 }
 
 export function flush(keepalive = false) {
-  if (!isBrowser() || queue.length === 0 || !API_BASE.startsWith('https://')) return;
+  if (!isBrowser() || queue.length === 0 || !(API_BASE.startsWith('https://') || API_BASE.startsWith('/'))) return;
   const events = queue.splice(0, 50);
   const body = JSON.stringify({ visitor_id: visitorId(), session_id: sessionId(), events });
   fetch(`${API_BASE}/events`, {
