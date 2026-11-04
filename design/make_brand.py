@@ -136,9 +136,9 @@ def save(im, name, max_h=None, max_w=None):
 
 assets = {}
 for theme, src in (("", light), ("-dark", dark)):
-    assets["mark" + theme] = save(crop_pad(src, mark_box), f"tickorbit-mark{theme}.png", max_h=256)
-    assets["wordmark" + theme] = save(crop_pad(src, word_box), f"tickorbit-wordmark{theme}.png", max_h=128)
-    assets["logo" + theme] = save(crop_pad(src, full_box, 16), f"tickorbit-logo{theme}.png", max_w=640)
+    assets["mark" + theme] = save(crop_pad(src, mark_box), f"tickorbit-mark{theme}.png", max_h=96)
+    assets["wordmark" + theme] = save(crop_pad(src, word_box), f"tickorbit-wordmark{theme}.png", max_h=64)
+    assets["logo" + theme] = save(crop_pad(src, full_box, 16), f"tickorbit-logo{theme}.png", max_w=480)
 
 # ---- Favicons: the symbol only, with a thin white outline so it reads on light AND dark tabs ----
 import base64, io as _io
@@ -189,6 +189,44 @@ apple = Image.new("RGBA", (180, 180), (255, 255, 255, 255))
 m = mark_hi.copy(); m.thumbnail((144, 144), Image.LANCZOS)
 apple.alpha_composite(m, ((180 - m.width) // 2, (180 - m.height) // 2))
 apple.convert("RGB").save(APP / "apple-icon.png", optimize=True)
+
+# ---- Social share image (Open Graph / X) and a 512px app icon ----
+from PIL import ImageFont as _IF2
+
+def _font(size, bold=False):
+    for name in (("seguisb.ttf", "segoeuib.ttf") if bold else ("segoeui.ttf",)):
+        for base in ("C:/Windows/Fonts/", "/usr/share/fonts/truetype/dejavu/"):
+            try:
+                return _IF2.truetype(base + name, size)
+            except OSError:
+                pass
+    return _IF2.load_default()
+
+OG_W, OG_H = 1200, 630
+og = Image.new("RGBA", (OG_W, OG_H), (245, 243, 238, 255))
+logo_full = crop_pad(light, full_box, 0)
+logo_full.thumbnail((560, 330), Image.LANCZOS)
+og.alpha_composite(logo_full, ((OG_W - logo_full.width) // 2, 92))
+d = ImageDraw.Draw(og)
+tag = "Every ticket deserves a destination"
+f1 = _font(46, bold=True)
+w = d.textlength(tag, font=f1)
+d.text(((OG_W - w) / 2, 92 + logo_full.height + 44), tag, font=f1, fill=(23, 22, 15, 255))
+sub = "Unused tickets · fair prices · no fees · India"
+f2 = _font(30)
+w2 = d.textlength(sub, font=f2)
+d.text(((OG_W - w2) / 2, 92 + logo_full.height + 112), sub, font=f2, fill=(110, 107, 96, 255))
+og_rgb = og.convert("RGB")
+og_rgb.save(APP / "opengraph-image.png", optimize=True)
+og_rgb.save(APP / "twitter-image.png", optimize=True)
+(APP / "opengraph-image.alt.txt").write_text("TickOrbit logo with the tagline: Every ticket deserves a destination", encoding="utf-8")
+(APP / "twitter-image.alt.txt").write_text("TickOrbit logo with the tagline: Every ticket deserves a destination", encoding="utf-8")
+
+icon512 = Image.new("RGBA", (512, 512), (245, 243, 238, 255))
+mk = crop_pad(light, mark_box, 0)
+mk.thumbnail((400, 400), Image.LANCZOS)
+icon512.alpha_composite(mk, ((512 - mk.width) // 2, (512 - mk.height) // 2))
+icon512.convert("RGB").save(OUT / "tickorbit-icon-512.png", optimize=True)
 
 # Preview on the tab colours Chrome actually uses
 tabs = [(255, 255, 255), (222, 225, 230), (53, 54, 58), (32, 32, 32), (0, 0, 0)]

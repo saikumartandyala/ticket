@@ -28,6 +28,8 @@ BASE_HEADERS = {
     "Cross-Origin-Resource-Policy": "same-site",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
     "X-Permitted-Cross-Domain-Policies": "none",
+    # The API is data, not pages: keep api.tickorbit.in out of search results.
+    "X-Robots-Tag": "noindex, nofollow",
 }
 API_CSP = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
 HSTS = "max-age=63072000; includeSubDomains"

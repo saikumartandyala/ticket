@@ -8,9 +8,9 @@ import { cn } from '../../lib/cn';
  * backgrounds. `onInverse` flips that for panels with the inverse surface.
  */
 const ASSETS = {
-  mark: { w: 321, h: 256 },
-  wordmark: { w: 573, h: 128 },
-  logo: { w: 640, h: 461 },
+  mark: { w: 120, h: 96 },
+  wordmark: { w: 286, h: 64 },
+  logo: { w: 480, h: 346 },
 } as const;
 
 type Asset = keyof typeof ASSETS;

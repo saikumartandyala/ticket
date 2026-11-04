@@ -61,6 +61,8 @@ const nextConfig = {
       { source: '/:path*', headers: securityHeaders },
       // Admin pages are never cached by the browser or proxies.
       { source: '/admin/:path*', headers: [{ key: 'Cache-Control', value: 'no-store' }] },
+      // Brand images: cached for a day, refreshed in the background (file names aren't hashed).
+      { source: '/brand/:file*', headers: [{ key: 'Cache-Control', value: 'public, max-age=86400, stale-while-revalidate=604800' }] },
     ];
   },
 };

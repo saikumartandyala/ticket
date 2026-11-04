@@ -71,6 +71,13 @@ if not settings.uses_cloud_storage:
 # Include main API router
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
+@app.get("/robots.txt", include_in_schema=False)
+def robots_txt():
+    """The API host is never meant to be crawled; the website has its own robots.txt."""
+    from fastapi.responses import PlainTextResponse
+    return PlainTextResponse("User-agent: *\nDisallow: /\n")
+
+
 @app.get("/")
 def read_root():
     return {"message": "TickOrbit API", "docs": "/docs"}

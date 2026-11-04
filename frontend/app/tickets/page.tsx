@@ -13,6 +13,7 @@ import { BoardHeader, ListingRow, ListingRowSkeleton } from '../../components/ti
 import { Button, ButtonLink } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Field';
 import { EmptyState, PageHeader } from '../../components/ui/misc';
+import { breadcrumbJsonLd, jsonLdString } from '../../lib/seo';
 import { cn } from '../../lib/cn';
 import { trackSearch } from '../../lib/analytics';
 
@@ -218,10 +219,24 @@ function BrowseInner() {
   );
 }
 
+const BROWSE_BREADCRUMB = jsonLdString(breadcrumbJsonLd([{ name: 'Home', path: '/' }, { name: 'Tickets', path: '/tickets' }]));
+
+// The Suspense fallback is the same header the page shows while the board
+// loads, so the server HTML (what search engines and slow phones see first)
+// isn't an empty shell.
 export default function BrowsePage() {
   return (
-    <Suspense fallback={<div className="container-page pt-10" />}>
-      <BrowseInner />
-    </Suspense>
+    <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: BROWSE_BREADCRUMB }} />
+      <Suspense
+        fallback={
+          <div className="container-page pt-10">
+            <PageHeader eyebrow="Marketplace" title="Browse tickets" description="Loading the board…" />
+          </div>
+        }
+      >
+        <BrowseInner />
+      </Suspense>
+    </>
   );
 }

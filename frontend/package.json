@@ -6,7 +6,8 @@
     "dev": "next dev --experimental-https --experimental-https-key ../certs/localhost-key.pem --experimental-https-cert ../certs/localhost.pem --experimental-https-ca ../certs/tickorbit-dev-ca.pem",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "seo:check": "node scripts/seo-check.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.0",
