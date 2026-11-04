@@ -4,6 +4,7 @@ from sqlalchemy.future import select
 from sqlalchemy import and_, or_, func
 from app.models import SeekerAlert, TicketListing, Notification
 from app.services.sms_service import send_match_notification
+from app.core.timeutil import utcnow
 
 async def check_seeker_alerts_for_listing(listing_id: str, db: AsyncSession) -> None:
     """
@@ -52,7 +53,7 @@ async def check_seeker_alerts_for_listing(listing_id: str, db: AsyncSession) -> 
             ),
             or_(
                 SeekerAlert.expires_at == None,
-                SeekerAlert.expires_at > datetime.now(timezone.utc)
+                SeekerAlert.expires_at > utcnow()
             )
         )
     )
@@ -84,7 +85,7 @@ async def check_seeker_alerts_for_listing(listing_id: str, db: AsyncSession) -> 
             )
             
         # Update alert firing metrics
-        alert.last_fired_at = datetime.now(timezone.utc)
+        alert.last_fired_at = utcnow()
         alert.fire_count += 1
         
     await db.commit()

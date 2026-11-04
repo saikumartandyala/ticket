@@ -1,191 +1,423 @@
 'use client';
 
-import React, { useState, CSSProperties } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuthStore } from '../../store/authStore';
-import { API_BASE } from '../../lib/api';
-import { useUiStore } from '../../store/uiStore';
-import { NewPost } from '../../components/new-ui/NewPost';
+import { ImageUp, LoaderCircle, X } from 'lucide-react';
+import { api, assetUrl, errorMessage } from '../../lib/api';
+import type { Listing } from '../../lib/types';
+import { CATEGORIES, type CategoryDef } from '../../lib/categories';
+import { useCategories } from '../../lib/useCategories';
+import { money, stationName, todayISO, toNumber } from '../../lib/format';
+import { useRequireAuth } from '../../lib/useRequireAuth';
+import { toast } from '../../store/toastStore';
 import Autocomplete from '../../components/Autocomplete';
+import { TicketStub } from '../../components/tickets/TicketStub';
+import { Button } from '../../components/ui/Button';
+import { Field, Input, Textarea } from '../../components/ui/Field';
+import { Notice, PageHeader, Skeleton } from '../../components/ui/misc';
+import { cn } from '../../lib/cn';
 
-const ACCENT: Record<string, string> = {
-  Train: '#38bdf8', Bus: '#fbbf24', IPL: '#a855f7', Cricket: '#34d399', Concert: '#f472b6', Event: '#c084fc',
-};
-const CAT_ID: Record<string, number> = { Train: 1, Bus: 2, IPL: 3, Cricket: 4, Concert: 5, Event: 6 };
-const CAT_CARDS = [
-  ['Train', 'PNR or e-ticket'], ['Bus', 'Seat or sleeper'], ['IPL', 'Stadium entry'],
-  ['Cricket', 'Intl. or domestic'], ['Concert', 'Live music pass'], ['Event', 'Conference, expo'],
-] as const;
-// SVG stroke icons (from the new-UI design) — one per category.
-const ICON_PATHS: Record<string, string> = {
-  Train: 'M5 15V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2Zm0-6h14M9 21l1.5-2m4.5 2-1.5-2M9.5 13h.01m4.99 0h.01',
-  Bus: 'M4 16V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10M4 16h16M4 16v2h3v-2m10 0v2h3v-2M6 8h12v4H6zM7.5 19.5h.01m8.99 0h.01',
-  IPL: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm-6.4 2.6c2 1.4 3.2 3.7 3.2 6.4s-1.2 5-3.2 6.4m12.8-12.8c-2 1.4-3.2 3.7-3.2 6.4s1.2 5 3.2 6.4',
-  Cricket: 'M15.5 4.5 19.5 8.5M14 6l4 4M5.5 18.5 13 11m-7.5 7.5-1.5 3 3-1.5M18 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z',
-  Concert: 'M9 18V6l10-2v12M9 18a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0Zm10-2a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0ZM9 9l10-2',
-  Event: 'M8 3v3m8-3v3M4 9h16M5 6h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1Zm3.5 7.5h.01M12 13.5h.01m3.49 0h.01M8.5 17h.01M12 17h.01',
-};
+type Errors = Partial<Record<string, string>>;
 
-function ClassicPost() {
-  const router = useRouter();
-  const { isAuthenticated, token } = useAuthStore();
-
-  const [postStep, setPostStep] = useState(0);
-  const [category, setCategory] = useState('Train');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [photoUrl, setPhotoUrl] = useState('');
-
-  // form fields
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const [datetime, setDatetime] = useState('');
-  const [seat, setSeat] = useState('');
-  const [face, setFace] = useState('');
-  const [asking, setAsking] = useState('');
-  const [operator, setOperator] = useState('');
-
-  const isRoute = category === 'Train' || category === 'Bus';
-
-  const handlePhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files?.length) return;
-    const file = e.target.files[0];
-    if (file.size > 5 * 1024 * 1024) { setError('Photo must be under 5MB.'); return; }
-    setUploading(true); setError('');
-    try {
-      const fd = new FormData(); fd.append('file', file);
-      const res = await fetch(`${API_BASE}/listings/upload-photo`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd });
-      if (!res.ok) { setError('Photo upload failed.'); return; }
-      const data = await res.json(); setPhotoUrl(data.url);
-    } catch { setError('Could not reach the server to upload.'); }
-    finally { setUploading(false); }
-  };
-
-  const publish = async () => {
-    if (!isAuthenticated) { router.push('/auth'); return; }
-    setLoading(true); setError('');
-    const title = isRoute ? `${from} → ${to}` : (operator || from || 'Ticket');
-    const eventDate = new Date(Date.now() + 3 * 3.6e6).toISOString().slice(0, 10); // fallback today+ if not parseable
-    const payload: any = {
-      category_id: CAT_ID[category],
-      title,
-      origin_city: isRoute ? from || null : null,
-      destination_city: isRoute ? to || null : null,
-      event_name: !isRoute ? (from || null) : null,
-      venue_name: !isRoute ? (operator || null) : null,
-      operator_name: isRoute ? (operator || null) : null,
-      event_date: eventDate,
-      seat_details: { seat },
-      original_price: parseFloat(face) || 0,
-      asking_price: parseFloat(asking) || 0,
-      ticket_photos: photoUrl ? [photoUrl] : [],
-      description: datetime || null,
-    };
-    try {
-      const res = await fetch(`${API_BASE}/listings`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
-      if (res.ok) { router.push('/dashboard'); }
-      else {
-        const d = await res.json().catch(() => null);
-        const det = d?.detail;
-        setError(typeof det === 'string' ? det : Array.isArray(det) && det[0]?.msg ? det[0].msg : 'Could not publish. Please check your details.');
-      }
-    } catch { setError('Could not reach the server.'); }
-    finally { setLoading(false); }
-  };
-
-  const next = () => { setError(''); if (postStep < 2) setPostStep(postStep + 1); else publish(); };
-  const back = () => { setError(''); setPostStep(Math.max(0, postStep - 1)); };
-
-  const fields: [string, string, string, (v: string) => void, string][] = isRoute
-    ? [['From', 'New Delhi (NDLS)', from, setFrom, 'text'], ['To', 'Mumbai Central (BCT)', to, setTo, 'text'], ['Operator', 'Rajdhani Express', operator, setOperator, 'text'], ['Date & time', 'Tonight · 20:45', datetime, setDatetime, 'text'], ['Class / seat', '3A · Seat 42', seat, setSeat, 'text'], ['Face value', '2450', face, setFace, 'number'], ['Your asking price', '1850', asking, setAsking, 'number']]
-    : [['Event name', 'MI vs CSK', from, setFrom, 'text'], ['Venue', 'Wankhede Stadium', operator, setOperator, 'text'], ['Date & time', 'Sat · 19:30', datetime, setDatetime, 'text'], ['Section / seat', 'North Stand · 2', seat, setSeat, 'text'], ['Face value', '4000', face, setFace, 'number'], ['Your asking price', '3200', asking, setAsking, 'number']];
-
+function Section({ n, title, desc, children }: { n: string; title: string; desc?: string; children: React.ReactNode }) {
   return (
-    <section style={{ maxWidth: 920, margin: '0 auto', padding: '40px 20px 80px' }}>
-      <h1 className="font-display" style={{ fontWeight: 800, fontSize: 'clamp(30px,4.4vw,44px)', letterSpacing: '-.035em', margin: '0 0 6px', color: '#fff' }}>List your ticket</h1>
-      <p style={{ color: '#9d90b6', margin: '0 0 28px', fontSize: 15 }}>Free, always. Takes about 40 seconds.</p>
-
-      {/* step pills */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 30, flexWrap: 'wrap' }}>
-        {['1 · Category', '2 · Details', '3 · Review'].map((label, i) => {
-          const done = i <= postStep;
-          return <div key={label} style={{ padding: '9px 16px', borderRadius: 999, fontSize: 13, border: `1px solid ${done ? 'rgba(192,132,252,.5)' : 'rgba(168,85,247,.18)'}`, background: done ? 'rgba(168,85,247,.16)' : 'rgba(255,255,255,.03)', color: done ? '#fff' : '#8b7fa3' }}>{label}</div>;
-        })}
+    <section data-reveal className="grid gap-5 border-t border-line py-8 first:border-t-0 first:pt-0 md:grid-cols-[200px_1fr] md:gap-8">
+      <div>
+        <div className="flex h-7 w-7 items-center justify-center rounded-full border border-line-strong bg-surface font-mono text-[11px] text-ink-2 num">{n}</div>
+        <h2 className="mt-3 text-[15px] font-semibold">{title}</h2>
+        {desc && <p className="mt-1 text-[13px] leading-relaxed text-ink-3">{desc}</p>}
       </div>
-
-      {error && <div style={{ marginBottom: 20, padding: '12px 16px', fontSize: 13, background: 'rgba(244,63,94,.1)', border: '1px solid rgba(244,63,94,.25)', color: '#fda4af', borderRadius: 14 }}>{error}</div>}
-
-      {/* Step 0: category */}
-      {postStep === 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 16 }}>
-          {CAT_CARDS.map(([label, hint]) => {
-            const selected = category === label;
-            return (
-              <div key={label} onClick={() => setCategory(label)} className="cat-card" style={{ padding: 24, borderRadius: 22, cursor: 'pointer', border: `1px solid ${selected ? 'rgba(192,132,252,.7)' : 'rgba(168,85,247,.2)'}`, background: 'linear-gradient(160deg,rgba(255,255,255,.06),rgba(255,255,255,.02))', backdropFilter: 'blur(14px)', boxShadow: selected ? '0 0 40px rgba(168,85,247,.35), inset 0 0 60px rgba(124,58,237,.16)' : 'inset 0 0 60px rgba(124,58,237,.16), 0 18px 44px rgba(0,0,0,.45)', transformStyle: 'preserve-3d' }}>
-                <div style={{ width: 44, height: 44, borderRadius: 14, background: `linear-gradient(145deg,${ACCENT[label]},#7c3aed)`, boxShadow: `0 10px 26px ${ACCENT[label]}66, inset 0 1px 0 rgba(255,255,255,.5)`, display: 'grid', placeItems: 'center' }}>
-                  <svg viewBox="0 0 24 24" width={24} height={24} fill="none" stroke="#fff" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
-                    <path d={ICON_PATHS[label]} />
-                  </svg>
-                </div>
-                <div className="font-display" style={{ fontWeight: 700, fontSize: 18, color: '#fff', marginTop: 16 }}>{label}</div>
-                <div style={{ fontSize: 12.5, color: '#9d90b6', marginTop: 5 }}>{hint}</div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Step 1: details */}
-      {postStep === 1 && (
-        <div className="glass" style={{ padding: 28, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 18 }}>
-          {fields.map(([label, ph, val, setter, type]) => (
-            <div key={label}>
-              <div style={{ fontSize: 12, letterSpacing: '.14em', textTransform: 'uppercase', color: '#c084fc', marginBottom: 8 }}>{label}</div>
-              {(label === 'From' || label === 'To') ? (
-                <Autocomplete theme="dark" kind={category === 'Train' ? 'station' : 'city'} value={val} onChange={setter} placeholder={ph} />
-              ) : (
-                <input className="field" type={type} placeholder={ph} value={val} onChange={(e) => setter(e.target.value)} style={{ padding: '14px 15px', fontSize: 14.5 }} />
-              )}
-            </div>
-          ))}
-          <div style={{ gridColumn: '1 / -1' }}>
-            <div style={{ fontSize: 12, letterSpacing: '.14em', textTransform: 'uppercase', color: '#c084fc', marginBottom: 8 }}>Ticket screenshot (optional)</div>
-            {photoUrl ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: '#86efac' }}>✓ Uploaded <button onClick={() => setPhotoUrl('')} style={{ background: 'transparent', border: 'none', color: '#fda4af', cursor: 'pointer', fontSize: 12 }}>Remove</button></div>
-            ) : (
-              <label style={{ display: 'inline-block', padding: '12px 18px', borderRadius: 12, border: '1px dashed rgba(168,85,247,.4)', color: '#c9b8e8', fontSize: 13, cursor: 'pointer' }}>
-                {uploading ? 'Uploading…' : 'Click to upload · max 5MB'}
-                <input type="file" accept="image/*" onChange={handlePhoto} style={{ display: 'none' }} />
-              </label>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Step 2: review */}
-      {postStep === 2 && (
-        <div className="glass-strong" style={{ padding: 30 }}>
-          <div style={{ fontSize: 11, letterSpacing: '.22em', textTransform: 'uppercase', color: '#dcccff' }}>Preview · {category}</div>
-          <div className="font-display" style={{ fontWeight: 800, fontSize: 30, color: '#fff', marginTop: 10, letterSpacing: '-.03em' }}>{isRoute ? `${from || 'From'} → ${to || 'To'}` : (from || 'Event')}</div>
-          <div style={{ color: '#cbb9f0', fontSize: 14, marginTop: 8 }}>{[datetime, seat, asking && '₹' + asking].filter(Boolean).join(' · ') || 'Your ticket details'}</div>
-          <div className="ticket-divider-bright" style={{ margin: '24px 0' }} />
-          <p style={{ color: '#c3b2e4', fontSize: 14, lineHeight: 1.65, margin: 0 }}>Seekers nearby will be alerted instantly. You&apos;ll get a chat request — no money passes through LastMinutePass.</p>
-        </div>
-      )}
-
-      {/* nav */}
-      <div style={{ display: 'flex', gap: 12, marginTop: 26, flexWrap: 'wrap' }}>
-        <button onClick={back} disabled={postStep === 0} style={{ padding: '14px 26px', borderRadius: 14, border: '1px solid rgba(168,85,247,.3)', background: 'transparent', color: '#c9b8e8', fontSize: 14.5, cursor: postStep === 0 ? 'not-allowed' : 'pointer', opacity: postStep === 0 ? 0.5 : 1 }}>Back</button>
-        <button onClick={next} disabled={loading || uploading} className="btn-shimmer" style={{ flex: '1 1 200px', padding: '14px 26px', borderRadius: 14, fontSize: 15 }}>
-          {loading ? 'Publishing…' : ['Continue to details', 'Review listing', 'Publish listing — free'][postStep]}
-        </button>
-      </div>
+      <div className="min-w-0">{children}</div>
     </section>
   );
 }
 
 export default function PostPage() {
-  const mode = useUiStore((s) => s.mode);
-  return mode === 'new' ? <NewPost /> : <ClassicPost />;
+  const router = useRouter();
+  const { ready } = useRequireAuth();
+
+  const categories = useCategories();
+  const [cat, setCat] = useState<CategoryDef>(CATEGORIES[0]);
+  // If the default category was hidden by an admin, fall back to the first visible one.
+  useEffect(() => {
+    if (categories.length && !categories.some((c) => c.id === cat.id)) setCat(categories[0]);
+  }, [categories, cat.id]);
+  const isRoute = cat.kind === 'route';
+
+  // Route fields
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [operator, setOperator] = useState('');
+  const [code, setCode] = useState('');
+  const [coach, setCoach] = useState('');
+  const [pnr, setPnr] = useState('');
+  const [arrival, setArrival] = useState('');
+  // Venue fields
+  const [eventName, setEventName] = useState('');
+  const [venue, setVenue] = useState('');
+  const [city, setCity] = useState('');
+  const [section, setSection] = useState('');
+  const [row, setRow] = useState('');
+  // Shared
+  const [date, setDate] = useState('');
+  const [time, setTime] = useState('');
+  const [seat, setSeat] = useState('');
+  const [seats, setSeats] = useState('1');
+  const [face, setFace] = useState('');
+  const [asking, setAsking] = useState('');
+  const [notes, setNotes] = useState('');
+  const [photo, setPhoto] = useState('');
+  const [uploading, setUploading] = useState(false);
+
+  const [errors, setErrors] = useState<Errors>({});
+  const [formError, setFormError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const faceN = toNumber(face);
+  const askN = toNumber(asking);
+  const band = faceN > 0 ? { min: Math.ceil(faceN * 0.3), max: Math.floor(faceN * 0.9) } : null;
+  const priceIssue =
+    band && askN > 0 ? (askN > band.max ? `Max ${money(band.max)} — 90% of face value.` : askN < band.min ? `Min ${money(band.min)} — 30% of face value.` : '') : '';
+
+  const seatText = isRoute
+    ? [coach, seat && `Seat ${seat}`].filter(Boolean).join(' · ')
+    : [section, row && `Row ${row}`, seat && `Seat ${seat}`].filter(Boolean).join(' · ');
+
+  const preview = useMemo(
+    () => ({
+      category: cat,
+      title: eventName,
+      operator: isRoute ? operator : null,
+      operatorCode: isRoute ? code : null,
+      from, to, venue, city,
+      date: date || null,
+      departure: time || null,
+      arrival: arrival || null,
+      seat: seatText || null,
+      seats: Math.max(1, parseInt(seats) || 1),
+      pnrLast4: isRoute ? pnr || null : null,
+      asking: askN || null,
+      face: faceN || null,
+    }),
+    [cat, eventName, isRoute, operator, code, from, to, venue, city, date, time, arrival, seatText, seats, pnr, askN, faceN],
+  );
+
+  const uploadPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { setErrors((x) => ({ ...x, photo: 'That file is over 5 MB.' })); return; }
+    setUploading(true);
+    setErrors((x) => ({ ...x, photo: undefined }));
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await api<{ url: string }>('/listings/upload-photo', { method: 'POST', form: fd, fallbackError: 'Upload failed. Try a different image.' });
+      setPhoto(res.url);
+    } catch (err) {
+      setErrors((x) => ({ ...x, photo: errorMessage(err) }));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const validate = (): Errors => {
+    const e: Errors = {};
+    if (isRoute) {
+      if (!from.trim()) e.from = 'Where does the journey start?';
+      if (!to.trim()) e.to = 'Where does it end?';
+      if (pnr && !/^\d{4}$/.test(pnr)) e.pnr = 'Enter exactly 4 digits.';
+    } else {
+      if (!eventName.trim()) e.eventName = 'What’s the event called?';
+      if (!venue.trim() && !city.trim()) e.venue = 'Add the venue or at least the city.';
+    }
+    if (!date) e.date = 'Pick the date.';
+    else if (date < todayISO()) e.date = 'That date has already passed.';
+    else if (date === todayISO() && time) {
+      const [h, m] = time.split(':').map(Number);
+      const now = new Date();
+      if (h * 60 + m <= now.getHours() * 60 + now.getMinutes()) e.time = 'That time has already passed today.';
+    }
+    const n = parseInt(seats);
+    if (!n || n < 1 || n > 10) e.seats = 'Between 1 and 10.';
+    if (!(faceN > 0)) e.face = 'Enter the price printed on the ticket.';
+    if (!(askN > 0)) e.asking = 'Enter your asking price.';
+    else if (priceIssue) e.asking = priceIssue;
+    return e;
+  };
+
+  const submit = async (ev: React.FormEvent) => {
+    ev.preventDefault();
+    setFormError('');
+    const e = validate();
+    setErrors(e);
+    if (Object.keys(e).length) {
+      setFormError('A few details need attention before you can publish.');
+      requestAnimationFrame(() => {
+        const el = document.querySelector<HTMLElement>('form [aria-invalid="true"]');
+        el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        el?.focus({ preventScroll: true });
+      });
+      return;
+    }
+    const seatDetails: Record<string, string> = {};
+    if (isRoute && coach.trim()) seatDetails.coach = coach.trim();
+    if (seat.trim()) seatDetails.seat = seat.trim();
+
+    const payload = {
+      category_id: cat.id,
+      title: isRoute ? `${stationName(from)} → ${stationName(to)}` : eventName.trim(),
+      description: notes.trim() || null,
+      origin_city: isRoute ? from.trim() : null,
+      destination_city: isRoute ? to.trim() : null,
+      operator_name: isRoute ? operator.trim() || null : null,
+      operator_code: isRoute ? code.trim() || null : null,
+      event_name: isRoute ? null : eventName.trim(),
+      venue_name: isRoute ? null : venue.trim() || null,
+      venue_city: isRoute ? null : city.trim() || null,
+      section: isRoute ? null : section.trim() || null,
+      row_number: isRoute ? null : row.trim() || null,
+      seat_count: parseInt(seats) || 1,
+      seat_details: Object.keys(seatDetails).length ? seatDetails : null,
+      event_date: date,
+      departure_time: time ? `${time}:00` : null,
+      arrival_time: isRoute && arrival ? `${arrival}:00` : null,
+      original_price: faceN,
+      asking_price: askN,
+      pnr_last_four: isRoute && pnr ? pnr : null,
+      ticket_photos: photo ? [photo] : [],
+    };
+
+    setSubmitting(true);
+    try {
+      const created = await api<Listing>('/listings', { method: 'POST', body: payload, fallbackError: 'Couldn’t publish your listing. Check the details and try again.' });
+      toast('Your ticket is live', 'People with matching alerts have been notified.', 'success');
+      router.push(`/tickets/${created.id}`);
+    } catch (err) {
+      setFormError(errorMessage(err));
+      setSubmitting(false);
+    }
+  };
+
+  if (!ready) {
+    return (
+      <div className="container-page pt-10">
+        <Skeleton className="h-9 w-56" />
+        <Skeleton className="mt-8 h-[420px] rounded-lg" />
+      </div>
+    );
+  }
+
+  const quick = faceN > 0 ? [10, 25, 40].map((p) => ({ p, v: Math.round(faceN * (1 - p / 100)) })) : [];
+
+  return (
+    <div className="container-page pt-10">
+      <PageHeader
+        eyebrow="Sell"
+        title="List a ticket"
+        description="Free to list. Your listing closes automatically at the departure or start time."
+      />
+
+      <div className="mt-8 grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_400px]">
+        <form onSubmit={submit} noValidate className="min-w-0">
+          <Section n="01" title="Category" desc="What kind of ticket is it?">
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 lg:grid-cols-3 xl:grid-cols-6" role="radiogroup" aria-label="Category">
+              {categories.map((c) => {
+                const Icon = c.icon;
+                const on = c.id === cat.id;
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={on}
+                    onClick={() => { setCat(c); setErrors({}); }}
+                    className={cn(
+                      'spotlight group flex flex-col items-start gap-3 rounded-md border p-3 text-left transition-all duration-300 ease-out-expo active:scale-[0.97]',
+                      on
+                        ? 'border-accent bg-surface shadow-[0_0_0_3px_rgb(var(--accent)/0.15),0_10px_24px_-12px_rgb(var(--accent)/0.5)]'
+                        : 'border-line-strong bg-surface/60 text-ink-2 hover:-translate-y-0.5 hover:border-ink-3 hover:text-ink hover:shadow-card',
+                    )}
+                  >
+                    <Icon className={cn('h-[18px] w-[18px] transition-all duration-500 ease-spring', on ? 'scale-110 text-accent' : 'group-hover:scale-110')} />
+                    <span className="text-sm font-medium">{c.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </Section>
+
+          <Section n="02" title={isRoute ? 'Journey' : 'Event'} desc={isRoute ? 'Start typing to pick a station or city.' : 'Where and when it’s happening.'}>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {isRoute ? (
+                <>
+                  <Field label="From" error={errors.from}>
+                    {(p) => <Autocomplete {...p} kind={cat.slug === 'train' ? 'station' : 'city'} value={from} onChange={setFrom} placeholder={cat.slug === 'train' ? 'New Delhi (NDLS)' : 'Bengaluru'} />}
+                  </Field>
+                  <Field label="To" error={errors.to}>
+                    {(p) => <Autocomplete {...p} kind={cat.slug === 'train' ? 'station' : 'city'} value={to} onChange={setTo} placeholder={cat.slug === 'train' ? 'Mumbai Central (BCT)' : 'Hyderabad'} />}
+                  </Field>
+                  <Field label={cat.slug === 'train' ? 'Train name' : 'Operator'} optional>
+                    {(p) => <Input {...p} value={operator} onChange={(e) => setOperator(e.target.value)} placeholder={cat.slug === 'train' ? 'Rajdhani Express' : 'VRL Travels'} />}
+                  </Field>
+                  <Field label={cat.slug === 'train' ? 'Train number' : 'Bus number'} optional>
+                    {(p) => <Input {...p} value={code} onChange={(e) => setCode(e.target.value)} placeholder={cat.slug === 'train' ? '12951' : 'KA-01-AB-1234'} className="font-mono" />}
+                  </Field>
+                </>
+              ) : (
+                <>
+                  <Field label="Event name" error={errors.eventName} className="sm:col-span-2">
+                    {(p) => <Input {...p} value={eventName} onChange={(e) => setEventName(e.target.value)} placeholder={cat.slug === 'concert' ? 'Prateek Kuhad — Silhouettes Tour' : cat.slug === 'event' ? 'Bengaluru Tech Summit' : 'MI vs CSK'} />}
+                  </Field>
+                  <Field label="Venue" error={errors.venue}>
+                    {(p) => <Input {...p} value={venue} onChange={(e) => setVenue(e.target.value)} placeholder="Wankhede Stadium" />}
+                  </Field>
+                  <Field label="City">
+                    {(p) => <Autocomplete {...p} kind="city" value={city} onChange={setCity} placeholder="Mumbai" />}
+                  </Field>
+                </>
+              )}
+              <Field label="Date" error={errors.date}>
+                {(p) => <Input {...p} type="date" min={todayISO()} value={date} onChange={(e) => setDate(e.target.value)} className="font-mono" />}
+              </Field>
+              <Field label={isRoute ? 'Departure time' : 'Start time'} error={errors.time} hint={!errors.time ? 'Your listing closes at this time.' : undefined}>
+                {(p) => <Input {...p} type="time" value={time} onChange={(e) => setTime(e.target.value)} className="font-mono" />}
+              </Field>
+              {isRoute && (
+                <Field label="Arrival time" optional>
+                  {(p) => <Input {...p} type="time" value={arrival} onChange={(e) => setArrival(e.target.value)} className="font-mono" />}
+                </Field>
+              )}
+            </div>
+          </Section>
+
+          <Section n="03" title="Seat" desc="Helps buyers know exactly what they’re getting.">
+            <div className="grid gap-4 sm:grid-cols-2">
+              {isRoute ? (
+                <Field label={cat.slug === 'train' ? 'Class / coach' : 'Seat type'} optional>
+                  {(p) => <Input {...p} value={coach} onChange={(e) => setCoach(e.target.value)} placeholder={cat.slug === 'train' ? '3A · B4' : 'Sleeper, lower'} />}
+                </Field>
+              ) : (
+                <Field label="Stand / section" optional>
+                  {(p) => <Input {...p} value={section} onChange={(e) => setSection(e.target.value)} placeholder="North Stand, Level 2" />}
+                </Field>
+              )}
+              {!isRoute && (
+                <Field label="Row" optional>
+                  {(p) => <Input {...p} value={row} onChange={(e) => setRow(e.target.value)} placeholder="K" />}
+                </Field>
+              )}
+              <Field label="Seat number(s)" optional>
+                {(p) => <Input {...p} value={seat} onChange={(e) => setSeat(e.target.value)} placeholder={isRoute ? '42' : '14, 15'} />}
+              </Field>
+              <Field label="Number of seats" error={errors.seats}>
+                {(p) => <Input {...p} type="number" inputMode="numeric" min={1} max={10} value={seats} onChange={(e) => setSeats(e.target.value)} className="font-mono" />}
+              </Field>
+              {isRoute && (
+                <Field label="Last 4 of PNR / booking ID" optional error={errors.pnr} hint={!errors.pnr ? 'Lets the buyer verify it. Never share the full number publicly.' : undefined}>
+                  {(p) => <Input {...p} inputMode="numeric" maxLength={4} value={pnr} onChange={(e) => setPnr(e.target.value.replace(/\D/g, ''))} placeholder="4821" className="font-mono" />}
+                </Field>
+              )}
+            </div>
+          </Section>
+
+          <Section n="04" title="Price" desc="Asking price must be 30–90% of face value. It keeps the board fair.">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Face value (₹)" error={errors.face} hint={!errors.face ? 'Total printed on the ticket.' : undefined}>
+                {(p) => <Input {...p} type="number" inputMode="decimal" min={1} value={face} onChange={(e) => setFace(e.target.value)} placeholder="2450" className="font-mono" />}
+              </Field>
+              <Field
+                label="Your asking price (₹)"
+                error={errors.asking || priceIssue || undefined}
+                hint={band ? `Allowed range ${money(band.min)} – ${money(band.max)}` : 'Enter the face value first.'}
+              >
+                {(p) => <Input {...p} type="number" inputMode="decimal" min={1} value={asking} onChange={(e) => setAsking(e.target.value)} placeholder="1850" className="font-mono" />}
+              </Field>
+            </div>
+            {quick.length > 0 && (
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-[13px]">
+                <span className="text-ink-3">Quick set</span>
+                {quick.map((q) => (
+                  <button
+                    key={q.p}
+                    type="button"
+                    onClick={() => setAsking(String(q.v))}
+                    className={cn(
+                      'rounded-full border px-2.5 py-1 font-mono text-xs transition-colors num',
+                      askN === q.v ? 'border-ink bg-inverse text-inverse-ink' : 'border-line-strong text-ink-2 hover:border-ink-3 hover:text-ink',
+                    )}
+                  >
+                    −{q.p}% · {money(q.v)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </Section>
+
+          <Section n="05" title="Extras" desc="Optional, but listings with a note get more requests.">
+            <div className="space-y-4">
+              <Field label="Note for buyers" optional>
+                {(p) => (
+                  <Textarea
+                    {...p}
+                    value={notes}
+                    maxLength={500}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Why you’re selling, where you can meet, how the transfer works for this ticket…"
+                  />
+                )}
+              </Field>
+              <div>
+                <div className="mb-1.5 flex items-baseline justify-between text-[13px] font-medium">
+                  Ticket photo <span className="text-xs font-normal text-ink-3">Optional</span>
+                </div>
+                {photo ? (
+                  <div className="flex items-center gap-3 rounded-md border border-line bg-surface p-2 pr-3">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={assetUrl(photo)} alt="Uploaded ticket" className="h-14 w-20 rounded object-cover" />
+                    <span className="flex-1 text-sm text-ink-2">Photo attached</span>
+                    <button type="button" onClick={() => setPhoto('')} className="flex items-center gap-1 text-[13px] text-ink-2 hover:text-danger">
+                      <X className="h-3.5 w-3.5" /> Remove
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex cursor-pointer items-center gap-3 rounded-md border border-dashed border-line-strong bg-surface/60 px-4 py-4 transition-colors hover:border-ink-3">
+                    {uploading ? <LoaderCircle className="h-5 w-5 animate-spin text-ink-3" /> : <ImageUp className="h-5 w-5 text-ink-3" />}
+                    <span>
+                      <span className="block text-sm font-medium">{uploading ? 'Uploading…' : 'Upload a photo'}</span>
+                      <span className="block text-[13px] text-ink-3">PNG or JPG, up to 5 MB. Cover barcodes if you prefer.</span>
+                    </span>
+                    <input type="file" accept="image/*" className="sr-only" onChange={uploadPhoto} disabled={uploading} />
+                  </label>
+                )}
+                {errors.photo && <p className="mt-1.5 text-[13px] text-danger">{errors.photo}</p>}
+              </div>
+            </div>
+          </Section>
+
+          <div className="sticky bottom-0 z-10 -mx-4 mt-2 border-t border-line bg-bg/80 px-4 py-4 backdrop-blur-xl sm:mx-0 sm:px-0 md:pl-[232px]">
+            {formError && <Notice tone="error" className="mb-3">{formError}</Notice>}
+            <div className="flex items-center gap-3">
+              <Button type="submit" size="lg" variant="accent" loading={submitting} disabled={uploading}>Publish listing</Button>
+              <span className="text-[13px] text-ink-3">You can cancel it any time.</span>
+            </div>
+          </div>
+        </form>
+
+        {/* Preview */}
+        <aside className="hidden lg:sticky lg:top-20 lg:block">
+          <div className="eyebrow mb-3 flex items-center gap-2"><span className="h-1.5 w-1.5 animate-blink rounded-full bg-accent" />Live preview</div>
+          <TicketStub data={preview} placeholder stacked />
+          <div className="mt-6 rounded-lg border border-line bg-surface/60 p-5 shadow-card">
+            <div className="text-sm font-semibold">What happens next</div>
+            <ol className="mt-3 space-y-3 text-[13px] leading-relaxed text-ink-2">
+              <li className="grid grid-cols-[24px_1fr]"><span className="font-mono text-ink-3">01</span>Your ticket appears on the board instantly; people with matching alerts are notified.</li>
+              <li className="grid grid-cols-[24px_1fr]"><span className="font-mono text-ink-3">02</span>Buyers send requests. You accept the one that suits you.</li>
+              <li className="grid grid-cols-[24px_1fr]"><span className="font-mono text-ink-3">03</span>Chat, meet, get paid directly, then mark it transferred.</li>
+            </ol>
+          </div>
+        </aside>
+      </div>
+    </div>
+  );
 }

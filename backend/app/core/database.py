@@ -14,6 +14,8 @@ else:
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=False,
+    # Never print bound values (emails, hashes) inside SQL error messages.
+    hide_parameters=settings.is_production,
     **engine_kwargs
 )
 

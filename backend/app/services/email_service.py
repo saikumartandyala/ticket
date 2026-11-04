@@ -37,6 +37,10 @@ async def send_otp_email(email: str, otp: str) -> bool:
     text_body = f"Your LastMinutePass OTP is: {otp}. Valid for 10 minutes."
 
     if not settings.BREVO_API_KEY:
+        if settings.is_production:
+            # Never pretend to deliver (or write codes to disk) on a live server.
+            logger.error("OTP delivery is not configured - set the provider API key in the environment")
+            return False
         logger.warning(f"--- [EMAIL MOCK] Sending OTP to {email}: {text_body} ---")
         try:
             with open("mock_otp_log.txt", "a") as f:

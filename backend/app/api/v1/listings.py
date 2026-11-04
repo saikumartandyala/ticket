@@ -7,8 +7,11 @@ from sqlalchemy import and_, or_, func
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
 
+from app.core import ratelimit
 from app.core.config import settings
 from app.core.database import get_db
+from app.services.analytics import track
+from app.core.timeutil import local_to_utc, utcnow
 from app.api.deps import get_current_user
 from app.models import User, TicketListing, Category, Match, Notification
 from app.schemas import ListingCreate, ListingResponse, ExpressInterestRequest, MatchResponse
@@ -37,10 +40,12 @@ async def get_listings(
     """
     Get all active, non-expired listings with optional filtering.
     """
-    now = datetime.now(timezone.utc)
+    now = utcnow()
     stmt = select(TicketListing).options(*LISTING_EAGER_LOAD).where(
         TicketListing.status == "active",
-        TicketListing.expires_at > now
+        TicketListing.expires_at > now,
+        # Categories hidden by an admin drop off the public board.
+        TicketListing.category.has(Category.is_active == True),  # noqa: E712
     )
     
     if category_id:
@@ -83,9 +88,17 @@ async def create_listing(
     """
     Create a new ticket listing. Enforces price rules, generates expiration, indexes alerts.
     """
+    ratelimit.enforce_user(current_user.id, "create-listing", 15, 3600)
+    category_row = (await db.execute(select(Category).where(Category.id == payload.category_id))).scalar_one_or_none()
+    if not category_row or not category_row.is_active:
+        raise HTTPException(status_code=400, detail="This category isn't accepting new listings right now")
+
     # Expiry calculation: default to event_date + 23:59:59 if no departure time is set
-    dep_time = payload.departure_time or time(23, 59, 59)
-    expires_dt = datetime.combine(payload.event_date, dep_time)
+    # Departure is the seller's local wall-clock time (APP_TIMEZONE); store the
+    # closing moment in UTC so it compares correctly with utcnow().
+    expires_dt = local_to_utc(payload.event_date, payload.departure_time)
+    if expires_dt <= utcnow():
+        raise HTTPException(status_code=400, detail="That departure time has already passed")
     
     # Auto-generate title if empty
     title = payload.title
@@ -133,6 +146,11 @@ async def create_listing(
     # Increment user listings counter
     current_user.total_listings += 1
     
+    await db.flush()
+    track(db, "listing_created", current_user.id, {
+        "listing_id": new_listing.id, "category_id": payload.category_id,
+        "asking_price": float(payload.asking_price), "original_price": float(payload.original_price),
+    })
     await db.commit()
     await db.refresh(new_listing)
 
@@ -203,6 +221,7 @@ async def express_interest(
     """
     Seeker expresses interest in an active listing, starting the match flow.
     """
+    ratelimit.enforce_user(current_user.id, "interest", 30, 3600)
     listing_res = await db.execute(select(TicketListing).where(TicketListing.id == id))
     listing = listing_res.scalar_one_or_none()
     if not listing:
@@ -246,6 +265,8 @@ async def express_interest(
     )
     db.add(notif)
     
+    await db.flush()
+    track(db, "request_sent", current_user.id, {"listing_id": listing.id, "match_id": match.id})
     await db.commit()
     await db.refresh(match)
 
@@ -271,5 +292,6 @@ async def upload_photo(
     """
     Upload a ticket photo to local disk and return public relative URL.
     """
+    ratelimit.enforce_user(current_user.id, "upload", 20, 3600)
     url = await upload_ticket_photo(file)
     return {"url": url}

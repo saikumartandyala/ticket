@@ -17,37 +17,53 @@ def _validate_identifier(identifier: str, channel: str) -> str:
             raise ValueError("Enter a valid email address")
     return identifier
 
-# --- AUTH SCHEMAS ---
-class OTPSendRequest(BaseModel):
-    identifier: str = Field(..., description="Phone number (E.164, e.g. +14155552671) or email address")
+
+def _normalize_identifier(identifier: str, channel: str) -> str:
+    identifier = (identifier or "").strip()
+    if channel == "email":
+        identifier = identifier.lower()
+    if len(identifier) > 254:
+        raise ValueError("That looks too long to be valid")
+    return _validate_identifier(identifier, channel)
+
+
+# Only files we stored ourselves (see services/storage_service.py) may be referenced.
+UPLOAD_PATH_RE = re.compile(r"^/api/v1/static/uploads/[0-9a-f]{32}\.(jpg|png|webp)$")
+OTP_PATTERN = r"^\d{6}$"
+
+
+class IdentifiedRequest(BaseModel):
+    """Phone/email requests: trimmed, emails lowercased, format checked."""
+    identifier: str = Field(..., max_length=254)
     channel: Channel
 
     @model_validator(mode="after")
-    def check_identifier(self) -> "OTPSendRequest":
-        _validate_identifier(self.identifier, self.channel)
+    def _normalize(self):
+        self.identifier = _normalize_identifier(self.identifier, self.channel)
         return self
 
-class OTPVerifyRequest(BaseModel):
-    identifier: str
-    channel: Channel
-    otp: str = Field(..., min_length=6, max_length=6)
+# --- AUTH SCHEMAS ---
+class OTPSendRequest(IdentifiedRequest):
+    """Phone number (E.164, e.g. +14155552671) or email address."""
 
-class CheckAccountRequest(BaseModel):
-    identifier: str
-    channel: Channel
+class OTPVerifyRequest(IdentifiedRequest):
+    otp: str = Field(..., pattern=OTP_PATTERN)
+
+class CheckAccountRequest(IdentifiedRequest):
+    pass
 
 class CheckAccountResponse(BaseModel):
     exists: bool
     has_password: bool
 
-class PasswordLoginRequest(BaseModel):
-    identifier: str
-    channel: Channel
-    password: str
+class PasswordLoginRequest(IdentifiedRequest):
+    password: str = Field(..., min_length=1, max_length=128)
 
 class SetPasswordRequest(BaseModel):
     password: str = Field(..., min_length=8, max_length=128)
-    confirm_password: str
+    confirm_password: str = Field(..., max_length=128)
+    # Required when the account already has a password.
+    current_password: Optional[str] = Field(None, max_length=128)
 
     @model_validator(mode="after")
     def passwords_match(self) -> "SetPasswordRequest":
@@ -55,12 +71,10 @@ class SetPasswordRequest(BaseModel):
             raise ValueError("Passwords do not match")
         return self
 
-class ResetPasswordRequest(BaseModel):
-    identifier: str
-    channel: Channel
-    otp: str = Field(..., min_length=6, max_length=6)
+class ResetPasswordRequest(IdentifiedRequest):
+    otp: str = Field(..., pattern=OTP_PATTERN)
     new_password: str = Field(..., min_length=8, max_length=128)
-    confirm_password: str
+    confirm_password: str = Field(..., max_length=128)
 
     @model_validator(mode="after")
     def passwords_match(self) -> "ResetPasswordRequest":
@@ -69,23 +83,33 @@ class ResetPasswordRequest(BaseModel):
         return self
 
 class Token(BaseModel):
-    access_token: str
-    token_type: str
+    """Sign-in result. The session itself is only ever in the HttpOnly cookie."""
     is_new_user: bool = False
     has_password: bool = False
 
 # --- USER SCHEMAS ---
 class UserProfileUpdate(BaseModel):
-    name: Optional[str] = None
+    name: Optional[str] = Field(None, max_length=60)
     email: Optional[EmailStr] = None
-    avatar_url: Optional[str] = None
-    notification_prefs: Optional[Dict[str, bool]] = None
+    avatar_url: Optional[str] = Field(None, max_length=200)
+    notification_prefs: Optional[Dict[Literal["sms", "email", "push"], bool]] = None
+
+    @field_validator("name")
+    @classmethod
+    def _clean_name(cls, v: Optional[str]) -> Optional[str]:
+        return v.strip() if v is not None else v
+
+    @field_validator("avatar_url")
+    @classmethod
+    def _own_upload(cls, v: Optional[str]) -> Optional[str]:
+        if v and not UPLOAD_PATH_RE.match(v):
+            raise ValueError("Upload the picture first, then use the returned link")
+        return v
 
 class UserPublic(BaseModel):
+    """What anyone can see about a user. Never includes contact details."""
     id: str
     name: Optional[str] = None
-    phone: Optional[str] = None
-    email: Optional[str] = None
     avatar_url: Optional[str] = None
     phone_verified: bool
     email_verified: bool
@@ -96,6 +120,17 @@ class UserPublic(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class UserContact(UserPublic):
+    """A user plus phone/email: only for themselves, or a counterpart after contact is revealed."""
+    phone: Optional[str] = None
+    email: Optional[str] = None
+
+
+class UserMe(UserContact):
+    """The signed-in user's own profile — includes fields not shown to others."""
+    is_admin: bool = False
 
 # --- CATEGORY SCHEMAS ---
 class CategoryBase(BaseModel):
@@ -110,35 +145,54 @@ class CategoryBase(BaseModel):
 
 # --- LISTING SCHEMAS ---
 class ListingCreate(BaseModel):
-    category_id: int
-    title: Optional[str] = None
-    description: Optional[str] = None
-    
+    category_id: int = Field(..., ge=1)
+    title: Optional[str] = Field(None, max_length=200)
+    description: Optional[str] = Field(None, max_length=1000)
+
     # Route info (train/bus)
-    origin_city: Optional[str] = None
-    destination_city: Optional[str] = None
-    operator_name: Optional[str] = None
-    operator_code: Optional[str] = None
-    
+    origin_city: Optional[str] = Field(None, max_length=100)
+    destination_city: Optional[str] = Field(None, max_length=100)
+    operator_name: Optional[str] = Field(None, max_length=100)
+    operator_code: Optional[str] = Field(None, max_length=20)
+
     # Event info
-    event_name: Optional[str] = None
-    venue_name: Optional[str] = None
-    venue_city: Optional[str] = None
-    section: Optional[str] = None
-    row_number: Optional[str] = None
-    
-    seat_count: int = 1
+    event_name: Optional[str] = Field(None, max_length=200)
+    venue_name: Optional[str] = Field(None, max_length=200)
+    venue_city: Optional[str] = Field(None, max_length=100)
+    section: Optional[str] = Field(None, max_length=50)
+    row_number: Optional[str] = Field(None, max_length=20)
+
+    seat_count: int = Field(1, ge=1, le=10)
     seat_details: Optional[Dict[str, Any]] = None
-    
+
     event_date: date
     departure_time: Optional[time] = None
     arrival_time: Optional[time] = None
-    
-    original_price: Decimal
-    asking_price: Decimal
-    pnr_last_four: Optional[str] = None
-    booking_ref: Optional[str] = None
-    ticket_photos: List[str] = Field(default_factory=list)
+
+    original_price: Decimal = Field(..., gt=0, le=1_000_000)
+    asking_price: Decimal = Field(..., gt=0, le=1_000_000)
+    pnr_last_four: Optional[str] = Field(None, pattern=r"^\d{4}$")
+    booking_ref: Optional[str] = Field(None, max_length=40)
+    ticket_photos: List[str] = Field(default_factory=list, max_length=3)
+
+    @field_validator("seat_details")
+    @classmethod
+    def _small_seat_details(cls, v: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        if v is None:
+            return v
+        if len(v) > 10 or any(
+            len(str(k)) > 30 or not isinstance(val, (str, int, float, bool, type(None))) or len(str(val)) > 100
+            for k, val in v.items()
+        ):
+            raise ValueError("Seat details are too long")
+        return v
+
+    @field_validator("ticket_photos")
+    @classmethod
+    def _own_uploads(cls, v: List[str]) -> List[str]:
+        if any(not UPLOAD_PATH_RE.match(p) for p in v):
+            raise ValueError("Upload ticket photos through the form")
+        return v
 
     @field_validator("asking_price")
     @classmethod
@@ -156,7 +210,8 @@ class ListingCreate(BaseModel):
     @field_validator("event_date")
     @classmethod
     def validate_future_date(cls, v: date) -> date:
-        if v < date.today():
+        from app.core.timeutil import local_today
+        if v < local_today():
             raise ValueError("Event/travel date cannot be in the past")
         return v
 
@@ -209,8 +264,17 @@ class MatchResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     listing: Optional[ListingResponse] = None
-    seeker: Optional[UserPublic] = None
-    transferor: Optional[UserPublic] = None
+    seeker: Optional[UserContact] = None
+    transferor: Optional[UserContact] = None
+
+    @model_validator(mode="after")
+    def _hide_contact_until_revealed(self) -> "MatchResponse":
+        if self.status not in ("contact_revealed", "transferred"):
+            for party in (self.seeker, self.transferor):
+                if party is not None:
+                    party.phone = None
+                    party.email = None
+        return self
 
     class Config:
         from_attributes = True

@@ -9,7 +9,7 @@ router = APIRouter()
 
 
 @router.get("/lookup/cities")
-async def lookup_cities(q: str = Query("", description="Search text (city/town)")):
+async def lookup_cities(q: str = Query("", max_length=80, description="Search text (city/town)")):
     q = q.strip()
     if len(q) < 2:
         return {"success": True, "data": []}
@@ -17,7 +17,7 @@ async def lookup_cities(q: str = Query("", description="Search text (city/town)"
 
 
 @router.get("/lookup/stations")
-async def lookup_stations(q: str = Query("", description="Search text (railway station)")):
+async def lookup_stations(q: str = Query("", max_length=80, description="Search text (railway station)")):
     q = q.strip()
     if len(q) < 2:
         return {"success": True, "data": []}

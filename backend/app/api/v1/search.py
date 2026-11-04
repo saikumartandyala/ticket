@@ -11,7 +11,7 @@ router = APIRouter()
 
 @router.get("")
 async def search(
-    q: str = Query(..., min_length=1),
+    q: str = Query(..., min_length=1, max_length=100),
     limit: int = Query(20, le=50),
     db: AsyncSession = Depends(get_db),
 ):

@@ -1,322 +1,412 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useEffect, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { api, errorMessage } from '../../lib/api';
+import type { User } from '../../lib/types';
 import { useAuthStore } from '../../store/authStore';
-import { API_BASE } from '../../lib/api';
-import { useUiStore } from '../../store/uiStore';
-import { NewAuth } from '../../components/new-ui/NewAuth';
+import { toast } from '../../store/toastStore';
+import { Button } from '../../components/ui/Button';
+import { Field, Input } from '../../components/ui/Field';
+import { Notice } from '../../components/ui/misc';
+import { LogoLockup } from '../../components/site/Logo';
+import { cn } from '../../lib/cn';
+import { OtpInput, type OtpStatus } from '../../components/auth/OtpInput';
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // Email-only (OTP + password are configured for email).
 const channel = 'email' as const;
 
 type Step =
   | 'choose'            // pick Sign in vs Create account
-  | 'signin'           // existing user: email + password
-  | 'reset-otp'        // forgot password: otp + new password
-  | 'register-email'   // new user: enter email -> send OTP
-  | 'register-otp'     // verify OTP
-  | 'register-password'// set a password
-  | 'register-name';   // set display name
+  | 'signin'            // existing user: email + password
+  | 'reset-otp'         // forgot password: otp + new password
+  | 'register-email'    // new user: enter email -> send OTP
+  | 'register-otp'      // verify OTP
+  | 'register-password' // set a password
+  | 'register-name';    // set display name
 
-// Ordered steps of the Create-account flow, used for the progress bar.
 const REGISTER_STEPS: Step[] = ['register-email', 'register-otp', 'register-password', 'register-name'];
-const NET_ERR = 'Could not reach the server. Please check your connection and try again.';
 
-async function parseError(response: Response, fallback: string): Promise<string> {
-  try {
-    const data = await response.json();
-    if (typeof data.detail === 'string') return data.detail;
-    if (Array.isArray(data.detail) && data.detail[0]?.msg) return data.detail[0].msg;
-  } catch {}
-  return fallback;
-}
+const validEmail = (v: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.trim());
 
-export default function AuthPage() {
-  const mode = useUiStore((s) => s.mode);
-  return mode === 'new' ? <NewAuth /> : <ClassicAuth />;
-}
-
-function ClassicAuth() {
-  const router = useRouter();
-  const { isAuthenticated, setAuth, token: storedToken } = useAuthStore();
-
-  const [identifier, setIdentifier] = useState('');
-  const [step, setStep] = useState<Step>('choose');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [otp, setOtp] = useState('');
-  const [name, setName] = useState('');
-  const [pendingToken, setPendingToken] = useState<string | null>(null);
-
-  useEffect(() => { if (isAuthenticated) router.push('/dashboard'); }, [isAuthenticated, router]);
-
-  const validEmail = (v: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v);
-  const goto = (s: Step) => { setError(''); setStep(s); };
-
-  // ---------- Sign in (existing account) ----------
-  const handleSignIn = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    if (!validEmail(identifier)) { setError('Enter a valid email address.'); return; }
-    if (!password) { setError('Enter your password.'); return; }
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/auth/login-password`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier, channel, password }) });
-      if (!res.ok) { setError(await parseError(res, 'Incorrect email or password. New here? Create an account.')); return; }
-      const data = await res.json();
-      await loadProfileAndFinish(data.access_token);
-    } catch { setError(NET_ERR); }
-    finally { setLoading(false); }
-  };
-
-  const handleForgotPassword = async () => {
-    setError('');
-    if (!validEmail(identifier)) { setError('Enter your account email above first.'); return; }
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/auth/forgot-password`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier, channel }) });
-      if (!res.ok) { setError(await parseError(res, 'Could not send reset code.')); return; }
-      setOtp(''); setPassword(''); setConfirmPassword('');
-      setStep('reset-otp');
-    } catch { setError(NET_ERR); }
-    finally { setLoading(false); }
-  };
-
-  const handleResetPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    if (otp.length !== 6) { setError('OTP must be exactly 6 digits.'); return; }
-    if (password.length < 8) { setError('Password must be at least 8 characters.'); return; }
-    if (password !== confirmPassword) { setError('Passwords do not match.'); return; }
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/auth/reset-password`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier, channel, otp, new_password: password, confirm_password: confirmPassword }) });
-      if (!res.ok) { setError(await parseError(res, 'Could not reset password.')); return; }
-      setOtp(''); setPassword(''); setConfirmPassword('');
-      setStep('signin');
-    } catch { setError(NET_ERR); }
-    finally { setLoading(false); }
-  };
-
-  // ---------- Create account (new user) ----------
-  const handleRegisterEmail = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    if (!validEmail(identifier)) { setError('Enter a valid email address.'); return; }
-    setLoading(true);
-    try {
-      const checkRes = await fetch(`${API_BASE}/auth/check-account`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier, channel }) });
-      if (!checkRes.ok) { setError(await parseError(checkRes, 'Something went wrong. Please try again.')); return; }
-      const check = await checkRes.json();
-      if (check.exists && check.has_password) { setError('An account with this email already exists. Please sign in instead.'); return; }
-      const otpRes = await fetch(`${API_BASE}/auth/send-otp`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier, channel }) });
-      if (!otpRes.ok) { setError(await parseError(otpRes, 'Could not send the code. Please try again.')); return; }
-      setOtp('');
-      setStep('register-otp');
-    } catch { setError(NET_ERR); }
-    finally { setLoading(false); }
-  };
-
-  const handleRegisterOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    if (otp.length !== 6) { setError('OTP must be exactly 6 digits.'); return; }
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/auth/verify-otp`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier, channel, otp }) });
-      if (!res.ok) { setError(await parseError(res, 'Invalid or expired OTP.')); return; }
-      const data = await res.json();
-      setPendingToken(data.access_token);
-      // Fresh registration always sets a password next; if the account somehow
-      // already had one, just finish signing in.
-      if (data.has_password) { await loadProfileAndFinish(data.access_token); }
-      else { setStep('register-password'); }
-    } catch { setError(NET_ERR); }
-    finally { setLoading(false); }
-  };
-
-  const handleRegisterPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    if (password.length < 8) { setError('Password must be at least 8 characters.'); return; }
-    if (password !== confirmPassword) { setError('Passwords do not match.'); return; }
-    const activeToken = pendingToken || storedToken;
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/auth/set-password`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${activeToken}` }, body: JSON.stringify({ password, confirm_password: confirmPassword }) });
-      if (!res.ok) { setError(await parseError(res, 'Could not set password.')); return; }
-      setStep('register-name');
-    } catch { setError(NET_ERR); }
-    finally { setLoading(false); }
-  };
-
-  const handleRegisterName = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    if (!name.trim()) { setError('Please enter your full name.'); return; }
-    const activeToken = pendingToken || storedToken;
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/auth/me`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${activeToken}` }, body: JSON.stringify({ name }) });
-      if (!res.ok) { setError(await parseError(res, 'Could not save your name.')); return; }
-      await loadProfileAndFinish(activeToken!);
-    } catch { setError(NET_ERR); }
-    finally { setLoading(false); }
-  };
-
-  const loadProfileAndFinish = async (accessToken: string) => {
-    const userRes = await fetch(`${API_BASE}/auth/me`, { headers: { Authorization: `Bearer ${accessToken}` } });
-    if (!userRes.ok) { setError('Signed in, but could not load your profile. Please try again.'); return; }
-    const userProfile = await userRes.json();
-    setAuth(userProfile, accessToken);
-    router.push('/dashboard');
-  };
-
-  const regIndex = REGISTER_STEPS.indexOf(step);
-  const isRegister = regIndex >= 0;
-  const copy: Record<Step, { t: string; b: string }> = {
-    'choose': { t: 'Welcome to LastMinutePass', b: 'Sign in to your account, or create a new one.' },
-    'signin': { t: 'Sign in', b: 'Enter your email and password to continue.' },
-    'reset-otp': { t: 'Reset your password', b: `Enter the code sent to ${identifier} and choose a new password.` },
-    'register-email': { t: 'Create your account', b: 'Enter your email — we will send a 6-digit code to verify it.' },
-    'register-otp': { t: 'Verify your email', b: `We sent a code to ${identifier}. It expires in 10 minutes.` },
-    'register-password': { t: 'Set a password', b: 'You will use this to sign in next time. Minimum 8 characters.' },
-    'register-name': { t: 'What should we call you?', b: 'This name appears on your listings and chats.' },
-  };
-
+function PasswordInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
+  const [show, setShow] = useState(false);
   return (
-    <section style={{ maxWidth: 480, margin: '0 auto', padding: '70px 20px 100px' }}>
-      <div className="glass-strong" style={{ position: 'relative', padding: 34 }}>
-        {isRegister && (
-          <>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 26 }}>
-              {[0, 1, 2, 3].map((i) => (
-                <div key={i} style={{ flex: 1, height: 4, borderRadius: 99, background: i <= regIndex ? 'linear-gradient(90deg,#7c3aed,#c084fc)' : 'rgba(255,255,255,.1)', boxShadow: i <= regIndex ? '0 0 14px rgba(168,85,247,.7)' : 'none' }} />
-              ))}
-            </div>
-            <div style={{ fontSize: 12, letterSpacing: '.2em', textTransform: 'uppercase', color: '#c084fc' }}>Step {regIndex + 1} of 4</div>
-          </>
-        )}
-        <h1 className="font-display" style={{ fontWeight: 700, fontSize: 29, color: '#fff', letterSpacing: '-.03em', margin: `${isRegister ? 12 : 0}px 0 8px` }}>{copy[step].t}</h1>
-        <p style={{ color: '#9d90b6', fontSize: 14.5, lineHeight: 1.6, margin: '0 0 24px' }}>{copy[step].b}</p>
-
-        {error && <div style={{ marginBottom: 18, padding: '11px 14px', fontSize: 13, background: 'rgba(244,63,94,.1)', border: '1px solid rgba(244,63,94,.25)', color: '#fda4af', borderRadius: 12 }}>{error}</div>}
-
-        {step === 'choose' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <button onClick={() => { setPassword(''); goto('signin'); }} className="btn-shimmer" style={{ width: '100%', padding: 15, borderRadius: 16, fontSize: 15.5 }}>Sign in</button>
-            <button onClick={() => { setPassword(''); setConfirmPassword(''); setName(''); setOtp(''); goto('register-email'); }} className="btn-ghost" style={{ width: '100%', padding: 15, borderRadius: 16, fontSize: 15.5 }}>Create account</button>
-          </div>
-        )}
-
-        {step === 'signin' && (
-          <form onSubmit={handleSignIn} noValidate>
-            <input className="field" type="email" placeholder="you@email.com" value={identifier} onChange={(e) => setIdentifier(e.target.value)} style={{ marginBottom: 12 }} required />
-            <input className="field" type="password" placeholder="Your password" value={password} onChange={(e) => setPassword(e.target.value)} style={{ marginBottom: 16 }} required />
-            <button type="submit" disabled={loading} className="btn-shimmer" style={{ width: '100%', padding: 15, borderRadius: 16, fontSize: 15.5 }}>{loading ? 'Signing in…' : 'Sign in'}</button>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 16, fontSize: 13 }}>
-              <button type="button" onClick={() => goto('choose')} style={linkBtn}>← Back</button>
-              <button type="button" onClick={handleForgotPassword} style={{ ...linkBtn, color: '#c084fc' }}>Forgot password?</button>
-            </div>
-            <div style={{ textAlign: 'center', marginTop: 14, fontSize: 13, color: '#8b7fa3' }}>
-              New here?{' '}
-              <button type="button" onClick={() => { setPassword(''); goto('register-email'); }} style={{ ...linkBtn, color: '#c084fc' }}>Create an account</button>
-            </div>
-          </form>
-        )}
-
-        {step === 'register-email' && (
-          <form onSubmit={handleRegisterEmail} noValidate>
-            <input className="field" type="email" placeholder="you@email.com" value={identifier} onChange={(e) => setIdentifier(e.target.value)} style={{ marginBottom: 20 }} required />
-            <button type="submit" disabled={loading} className="btn-shimmer" style={{ width: '100%', padding: 15, borderRadius: 16, fontSize: 15.5 }}>{loading ? 'Please wait…' : 'Send code'}</button>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 16, fontSize: 13 }}>
-              <button type="button" onClick={() => goto('choose')} style={linkBtn}>← Back</button>
-              <button type="button" onClick={() => { setPassword(''); goto('signin'); }} style={{ ...linkBtn, color: '#c084fc' }}>Already have an account?</button>
-            </div>
-          </form>
-        )}
-
-        {step === 'register-otp' && (
-          <form onSubmit={handleRegisterOtp} noValidate>
-            <OtpBoxes value={otp} onChange={setOtp} />
-            <button type="submit" disabled={loading} className="btn-shimmer" style={{ width: '100%', marginTop: 20, padding: 15, borderRadius: 16, fontSize: 15.5 }}>{loading ? 'Verifying…' : 'Verify code'}</button>
-            <button type="button" onClick={() => goto('register-email')} style={{ ...linkBtn, marginTop: 16, display: 'block' }}>← Change email</button>
-          </form>
-        )}
-
-        {step === 'register-password' && (
-          <form onSubmit={handleRegisterPassword} noValidate>
-            <input className="field" type="password" placeholder="Password (min 8 chars)" value={password} onChange={(e) => setPassword(e.target.value)} style={{ marginBottom: 12 }} required />
-            <input className="field" type="password" placeholder="Retype password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} style={{ marginBottom: 20 }} required />
-            <button type="submit" disabled={loading} className="btn-shimmer" style={{ width: '100%', padding: 15, borderRadius: 16, fontSize: 15.5 }}>{loading ? 'Saving…' : 'Continue'}</button>
-          </form>
-        )}
-
-        {step === 'register-name' && (
-          <form onSubmit={handleRegisterName} noValidate>
-            <input className="field" type="text" placeholder="Aarav Sharma" value={name} onChange={(e) => setName(e.target.value)} style={{ marginBottom: 20 }} required />
-            <button type="submit" disabled={loading} className="btn-shimmer" style={{ width: '100%', padding: 15, borderRadius: 16, fontSize: 15.5 }}>{loading ? 'Finishing…' : 'Finish setup'}</button>
-          </form>
-        )}
-
-        {step === 'reset-otp' && (
-          <form onSubmit={handleResetPassword} noValidate>
-            <OtpBoxes value={otp} onChange={setOtp} />
-            <input className="field" type="password" placeholder="New password (min 8)" value={password} onChange={(e) => setPassword(e.target.value)} style={{ margin: '16px 0 12px' }} required />
-            <input className="field" type="password" placeholder="Retype new password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} style={{ marginBottom: 20 }} required />
-            <button type="submit" disabled={loading} className="btn-shimmer" style={{ width: '100%', padding: 15, borderRadius: 16, fontSize: 15.5 }}>{loading ? 'Saving…' : 'Reset password'}</button>
-            <button type="button" onClick={() => goto('signin')} style={{ ...linkBtn, marginTop: 16, display: 'block' }}>← Back to sign in</button>
-          </form>
-        )}
-
-        <div style={{ textAlign: 'center', marginTop: 18, fontSize: 13.5, color: '#8b7fa3' }}>Email only. Sign in with your password, or create an account in seconds.</div>
-      </div>
-    </section>
+    <div className="relative">
+      <Input {...props} type={show ? 'text' : 'password'} className="pr-11" />
+      <button
+        type="button"
+        onClick={() => setShow(!show)}
+        aria-label={show ? 'Hide password' : 'Show password'}
+        className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-2 text-ink-3 hover:text-ink"
+      >
+        {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+      </button>
+    </div>
   );
 }
 
-const linkBtn: React.CSSProperties = { background: 'transparent', border: 'none', color: '#a99cc0', fontSize: 13, cursor: 'pointer', padding: 0 };
+function ResendButton({ cooldown, disabled, onClick }: { cooldown: number; disabled?: boolean; onClick: () => void }) {
+  if (cooldown > 0) {
+    return (
+      <span className="flex items-center gap-2 text-ink-3">
+        <svg viewBox="0 0 20 20" className="h-4 w-4 -rotate-90" aria-hidden>
+          <circle cx="10" cy="10" r="8" fill="none" className="stroke-line" strokeWidth="2" />
+          <circle
+            cx="10" cy="10" r="8" fill="none" className="stroke-accent transition-[stroke-dashoffset] duration-1000 ease-linear" strokeWidth="2"
+            strokeDasharray="50.3" strokeDashoffset={50.3 * (1 - cooldown / 30)} strokeLinecap="round"
+          />
+        </svg>
+        Resend in <span className="font-mono num">0:{String(cooldown).padStart(2, '0')}</span>
+      </span>
+    );
+  }
+  return (
+    <button type="button" onClick={onClick} disabled={disabled} className="animate-fade-in font-medium text-ink underline-offset-4 hover:underline disabled:opacity-50">
+      Resend code
+    </button>
+  );
+}
 
-function OtpBoxes({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const refs = useRef<(HTMLInputElement | null)[]>([]);
-  const digits = value.padEnd(6, ' ').slice(0, 6).split('');
+function AuthInner() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const explicitNext = params.get('next');
+  const rawNext = explicitNext || '/dashboard';
+  const next = rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/dashboard';
+  const { hydrated, isAuthenticated, setAuth } = useAuthStore();
 
-  const set = (i: number, ch: string) => {
-    const clean = ch.replace(/\D/g, '').slice(-1);
-    const arr = value.padEnd(6, ' ').split('');
-    arr[i] = clean || ' ';
-    onChange(arr.join('').replace(/ /g, ''));
-    if (clean && i < 5) refs.current[i + 1]?.focus();
+  const [step, setStep] = useState<Step>('choose');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [otp, setOtp] = useState('');
+  const [name, setName] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
+  const finishing = useRef(false);
+  const [otpStatus, setOtpStatus] = useState<OtpStatus>('idle');
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
+
+  /** Shake the boxes, then clear them so the user can retype. */
+  const otpFailed = async (msg: string) => {
+    setOtpStatus('error');
+    setError(msg);
+    await sleep(700);
+    setOtp('');
+    setOtpStatus('idle');
   };
-  const onKey = (i: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace' && !digits[i].trim() && i > 0) refs.current[i - 1]?.focus();
+
+  useEffect(() => {
+    if (hydrated && isAuthenticated && !finishing.current) router.replace(next);
+  }, [hydrated, isAuthenticated, next, router]);
+
+  const goto = (s: Step) => { setError(''); setInfo(''); setOtpStatus('idle'); setStep(s); };
+  const identifier = email.trim();
+
+  const wrap = async (fn: () => Promise<void>) => {
+    setError('');
+    setLoading(true);
+    try { await fn(); } catch (e) { setError(errorMessage(e)); } finally { setLoading(false); }
   };
-  const onPaste = (e: React.ClipboardEvent) => {
-    const txt = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
-    if (txt) { onChange(txt); e.preventDefault(); }
+
+  /** The session cookie is already set by the API; load the profile and move on. */
+  const finish = async (welcome?: string) => {
+    const me = await api<User>('/auth/me', { fallbackError: 'Signed in, but we couldn’t load your profile. Please try again.' });
+    finishing.current = true;
+    setAuth(me);
+    if (welcome) toast(welcome, undefined, 'success');
+    router.replace(next.startsWith('/admin') ? '/dashboard' : next);
+  };
+
+  const signIn = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validEmail(email)) { setError('Enter a valid email address.'); return; }
+    if (!password) { setError('Enter your password.'); return; }
+    wrap(async () => {
+      await api('/auth/login-password', { method: 'POST', body: { identifier, channel, password }, fallbackError: 'Incorrect email or password.' });
+      await finish();
+    });
+  };
+
+  const forgot = () => {
+    if (!validEmail(email)) { setError('Enter your account email first, then choose “Forgot password”.'); return; }
+    wrap(async () => {
+      await api('/auth/forgot-password', { method: 'POST', body: { identifier, channel }, fallbackError: 'Couldn’t send a reset code.' });
+      setOtp(''); setPassword(''); setConfirm('');
+      setCooldown(30);
+      goto('reset-otp');
+    });
+  };
+
+  const reset = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (otp.length !== 6) { setError('Enter the 6-digit code.'); return; }
+    if (password.length < 8) { setError('Password must be at least 8 characters.'); return; }
+    if (password !== confirm) { setError('Passwords don’t match.'); return; }
+    setError('');
+    setLoading(true);
+    (async () => {
+      try {
+        await api('/auth/reset-password', { method: 'POST', body: { identifier, channel, otp, new_password: password, confirm_password: confirm }, fallbackError: 'Couldn’t reset your password.' });
+        setOtpStatus('success');
+        await sleep(1300);
+        setOtp(''); setPassword(''); setConfirm('');
+        goto('signin');
+        setInfo('Password updated. Sign in with your new password.');
+      } catch (err) {
+        const msg = errorMessage(err);
+        if (/otp|code|expired/i.test(msg)) await otpFailed(msg);
+        else setError(msg);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  };
+
+  const registerEmail = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validEmail(email)) { setError('Enter a valid email address.'); return; }
+    wrap(async () => {
+      const check = await api<{ exists: boolean; has_password: boolean }>('/auth/check-account', { method: 'POST', body: { identifier, channel } });
+      if (check.exists && check.has_password) { setError('An account with this email already exists. Sign in instead.'); return; }
+      await api('/auth/send-otp', { method: 'POST', body: { identifier, channel }, fallbackError: 'Couldn’t send the code. Please try again.' });
+      setOtp('');
+      setCooldown(30);
+      goto('register-otp');
+    });
+  };
+
+  const resend = (purpose: 'register' | 'reset') => {
+    if (cooldown > 0) return;
+    wrap(async () => {
+      await api(purpose === 'reset' ? '/auth/forgot-password' : '/auth/send-otp', { method: 'POST', body: { identifier, channel }, fallbackError: 'Couldn’t resend the code.' });
+      setOtp('');
+      setCooldown(30);
+      setInfo(`A new code is on its way to ${identifier}.`);
+    });
+  };
+
+  const verifyCode = async (code: string) => {
+    if (code.length !== 6 || otpStatus === 'verifying' || otpStatus === 'success') return;
+    setError('');
+    setInfo('');
+    setOtpStatus('verifying');
+    const started = Date.now();
+    try {
+      const d = await api<{ has_password: boolean }>('/auth/verify-otp', { method: 'POST', body: { identifier, channel, otp: code }, fallbackError: 'That code is invalid or has expired.' });
+      // Let the verifying wave play at least once so it doesn't flash.
+      await sleep(Math.max(0, 650 - (Date.now() - started)));
+      setOtpStatus('success');
+      await sleep(1500);
+      if (d.has_password) await finish();
+      else goto('register-password');
+    } catch (err) {
+      await sleep(Math.max(0, 450 - (Date.now() - started)));
+      await otpFailed(errorMessage(err));
+    }
+  };
+
+  const registerOtp = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (otp.length !== 6) { otpFailed('Enter all 6 digits of the code.'); return; }
+    verifyCode(otp);
+  };
+
+  const registerPassword = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password.length < 8) { setError('Password must be at least 8 characters.'); return; }
+    if (password !== confirm) { setError('Passwords don’t match.'); return; }
+    wrap(async () => {
+      await api('/auth/set-password', { method: 'POST', body: { password, confirm_password: confirm }, fallbackError: 'Couldn’t set your password.' });
+      goto('register-name');
+    });
+  };
+
+  const registerName = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) { setError('Enter your name.'); return; }
+    wrap(async () => {
+      await api('/auth/me', { method: 'PUT', body: { name: name.trim() }, fallbackError: 'Couldn’t save your name.' });
+      await finish('Welcome to TickOrbit');
+    });
+  };
+
+  const regIndex = REGISTER_STEPS.indexOf(step);
+  const copy: Record<Step, { t: string; b: React.ReactNode }> = {
+    choose: { t: 'Welcome', b: 'Sign in, or create an account with your email. It takes under a minute.' },
+    signin: { t: 'Sign in', b: 'Use the email and password you registered with.' },
+    'reset-otp': { t: 'Reset your password', b: <>Enter the code we sent to <span className="font-medium text-ink">{identifier}</span> and choose a new password.</> },
+    'register-email': { t: 'Create your account', b: 'We’ll email you a 6-digit code to confirm it’s you.' },
+    'register-otp': { t: 'Check your inbox', b: <>Enter the code sent to <span className="font-medium text-ink">{identifier}</span>. It expires in 10 minutes.</> },
+    'register-password': { t: 'Choose a password', b: 'At least 8 characters. You’ll use it to sign in next time.' },
+    'register-name': { t: 'What should we call you?', b: 'Shown to people you trade with on listings and in chat.' },
   };
 
   return (
-    <div style={{ display: 'flex', gap: 10 }}>
-      {[0, 1, 2, 3, 4, 5].map((i) => (
-        <input
-          key={i}
-          ref={(el) => { refs.current[i] = el; }}
-          maxLength={1}
-          inputMode="numeric"
-          value={digits[i].trim()}
-          onChange={(e) => set(i, e.target.value)}
-          onKeyDown={(e) => onKey(i, e)}
-          onPaste={onPaste}
-          style={{ flex: 1, minWidth: 0, textAlign: 'center', fontFamily: 'Outfit', fontWeight: 700, fontSize: 22, color: '#fff', padding: '14px 0', borderRadius: 14, border: '1px solid rgba(168,85,247,.35)', background: 'rgba(255,255,255,.05)', outline: 'none' }}
-          onFocus={(e) => { e.target.style.borderColor = '#c084fc'; e.target.style.boxShadow = '0 0 0 3px rgba(168,85,247,.25)'; }}
-          onBlur={(e) => { e.target.style.borderColor = 'rgba(168,85,247,.35)'; e.target.style.boxShadow = 'none'; }}
-        />
-      ))}
+    <div className="grid min-h-[calc(100dvh-3.5rem)] lg:grid-cols-[1fr_minmax(0,560px)]">
+      <div className="flex items-start justify-center px-4 py-12 sm:items-center sm:py-16">
+        <div className="w-full max-w-[380px] animate-fade-up">
+          {regIndex >= 0 && (
+            <div className="mb-8">
+              <div className="flex gap-1.5">
+                {REGISTER_STEPS.map((s, i) => (
+                  <span key={s} className="relative h-1 flex-1 overflow-hidden rounded-full bg-line">
+                    <span className={cn('absolute inset-y-0 left-0 rounded-full bg-accent transition-[width] duration-700 ease-out-expo', i <= regIndex ? 'w-full' : 'w-0')} />
+                  </span>
+                ))}
+              </div>
+              <div className="mt-2.5 font-mono text-xs text-ink-3 num">Step {regIndex + 1} of 4</div>
+            </div>
+          )}
+
+          <div key={step} className="animate-page-in">
+          <h1 className="text-[30px] font-semibold tracking-[-0.03em]">{copy[step].t}</h1>
+          <p className="mt-2 text-[15px] leading-relaxed text-ink-2">{copy[step].b}</p>
+
+          <div className="mt-8 space-y-4">
+            {error && <Notice tone="error">{error}</Notice>}
+            {info && !error && <Notice tone="success">{info}</Notice>}
+
+            {step === 'choose' && (
+              <div className="space-y-3">
+                <Button size="lg" className="w-full" onClick={() => { setPassword(''); goto('signin'); }}>Sign in</Button>
+                <Button size="lg" variant="secondary" className="w-full" onClick={() => { setPassword(''); setConfirm(''); setName(''); setOtp(''); goto('register-email'); }}>
+                  Create an account
+                </Button>
+              </div>
+            )}
+
+            {step === 'signin' && (
+              <form onSubmit={signIn} noValidate className="space-y-4">
+                <Field label="Email">{(p) => <Input {...p} type="email" autoComplete="email" autoFocus value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />}</Field>
+                <div>
+                  <div className="mb-1.5 flex items-baseline justify-between">
+                    <label htmlFor="pw" className="text-[13px] font-medium">Password</label>
+                    <button type="button" onClick={forgot} className="text-[13px] text-ink-2 underline-offset-4 hover:text-ink hover:underline">Forgot password?</button>
+                  </div>
+                  <PasswordInput id="pw" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                </div>
+                <Button type="submit" size="lg" className="w-full" loading={loading}>Sign in</Button>
+                <p className="text-center text-sm text-ink-2">
+                  New here?{' '}
+                  <button type="button" onClick={() => { setPassword(''); goto('register-email'); }} className="font-medium text-ink underline-offset-4 hover:underline">Create an account</button>
+                </p>
+              </form>
+            )}
+
+            {step === 'register-email' && (
+              <form onSubmit={registerEmail} noValidate className="space-y-4">
+                <Field label="Email">{(p) => <Input {...p} type="email" autoComplete="email" autoFocus value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />}</Field>
+                <Button type="submit" size="lg" className="w-full" loading={loading}>Send code</Button>
+                <p className="text-center text-sm text-ink-2">
+                  Already have an account?{' '}
+                  <button type="button" onClick={() => { setPassword(''); goto('signin'); }} className="font-medium text-ink underline-offset-4 hover:underline">Sign in</button>
+                </p>
+              </form>
+            )}
+
+            {step === 'register-otp' && (
+              <form onSubmit={registerOtp} noValidate className="space-y-4">
+                <OtpInput value={otp} onChange={(v) => { setOtp(v); if (error) setError(''); }} onComplete={verifyCode} status={otpStatus} autoFocus />
+                <Button
+                  type="submit"
+                  size="lg"
+                  className="w-full"
+                  loading={otpStatus === 'verifying'}
+                  disabled={otp.length !== 6 || otpStatus === 'success'}
+                >
+                  {otpStatus === 'verifying' ? 'Verifying…' : otpStatus === 'success' ? 'Verified' : 'Verify'}
+                </Button>
+                <div className="flex items-center justify-between text-[13px]">
+                  <button type="button" onClick={() => goto('register-email')} className="text-ink-2 hover:text-ink">Change email</button>
+                  <ResendButton cooldown={cooldown} disabled={loading || otpStatus !== 'idle'} onClick={() => resend('register')} />
+                </div>
+              </form>
+            )}
+
+            {step === 'register-password' && (
+              <form onSubmit={registerPassword} noValidate className="space-y-4">
+                <Field label="Password" hint="At least 8 characters.">{(p) => <PasswordInput {...p} autoComplete="new-password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} />}</Field>
+                <Field label="Confirm password">{(p) => <PasswordInput {...p} autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />}</Field>
+                <Button type="submit" size="lg" className="w-full" loading={loading}>Continue</Button>
+              </form>
+            )}
+
+            {step === 'register-name' && (
+              <form onSubmit={registerName} noValidate className="space-y-4">
+                <Field label="Full name">{(p) => <Input {...p} autoComplete="name" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Aarav Sharma" />}</Field>
+                <Button type="submit" size="lg" className="w-full" loading={loading}>Finish</Button>
+              </form>
+            )}
+
+            {step === 'reset-otp' && (
+              <form onSubmit={reset} noValidate className="space-y-4">
+                <OtpInput value={otp} onChange={(v) => { setOtp(v); if (error) setError(''); }} status={otpStatus} autoFocus label="Reset code" />
+                <div className="flex justify-end text-[13px]">
+                  <ResendButton cooldown={cooldown} disabled={loading || otpStatus !== 'idle'} onClick={() => resend('reset')} />
+                </div>
+                <Field label="New password" hint="At least 8 characters.">{(p) => <PasswordInput {...p} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />}</Field>
+                <Field label="Confirm new password">{(p) => <PasswordInput {...p} autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />}</Field>
+                <Button type="submit" size="lg" className="w-full" loading={loading}>Reset password</Button>
+              </form>
+            )}
+
+            {step !== 'choose' && (
+              <button type="button" onClick={() => goto(step === 'reset-otp' ? 'signin' : 'choose')} className="flex items-center gap-1.5 pt-2 text-[13px] text-ink-3 hover:text-ink">
+                <ArrowLeft className="h-3.5 w-3.5" /> Back
+              </button>
+            )}
+          </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Side panel */}
+      <aside className="relative isolate hidden overflow-hidden border-l border-line bg-inverse text-inverse-ink lg:flex lg:flex-col lg:justify-between lg:p-12">
+        <div aria-hidden className="absolute -right-32 -top-32 -z-10 h-96 w-96 animate-[aurora_18s_ease-in-out_infinite_alternate] rounded-full bg-accent/40 blur-[100px]" />
+        <div aria-hidden className="absolute -bottom-40 -left-20 -z-10 h-96 w-96 animate-[aurora_24s_ease-in-out_infinite_alternate-reverse] rounded-full bg-warn/20 blur-[110px]" />
+        <LogoLockup onInverse />
+        <div>
+          <p className="max-w-[420px] animate-page-in text-[34px] font-semibold leading-[1.1] tracking-[-0.035em] [animation-delay:150ms]">
+            Every ticket deserves a destination.
+          </p>
+          <ul className="mt-10 space-y-5 text-[15px]">
+            {[
+              ['Free, always', 'No listing fees, no commission. We never touch the payment.'],
+              ['Fair prices', 'Every listing sits between 30% and 90% of face value.'],
+              ['Private by default', 'Contact details are shared only when both of you agree.'],
+            ].map(([t, b]) => (
+              <li key={t} className="grid grid-cols-[20px_1fr] gap-3">
+                <span className="mt-2 h-px w-3 bg-current opacity-50" />
+                <span>
+                  <span className="font-medium">{t}</span>
+                  <span className="block opacity-60">{b}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="font-mono text-xs opacity-40">TICKORBIT · P2P TICKET BOARD</div>
+      </aside>
     </div>
+  );
+}
+
+export default function AuthPage() {
+  return (
+    <Suspense fallback={null}>
+      <AuthInner />
+    </Suspense>
   );
 }

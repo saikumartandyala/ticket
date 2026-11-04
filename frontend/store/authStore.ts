@@ -1,77 +1,61 @@
-import { create } from 'zustand';
-import { API_BASE } from '../lib/api';
+'use client';
 
-interface User {
-  id: string;
-  phone?: string;
-  name?: string;
-  email?: string;
-  avatar_url?: string;
-  phone_verified: boolean;
-  email_verified: boolean;
-  avg_rating: number;
-  rating_count: number;
-  total_listings: number;
-  total_matches: number;
-}
+import { create } from 'zustand';
+import { api, ApiError } from '../lib/api';
+import type { User } from '../lib/types';
 
 interface AuthState {
   user: User | null;
-  token: string | null;
   isAuthenticated: boolean;
-  setAuth: (user: User, token: string) => void;
+  /** True once we've asked the API who (if anyone) is signed in. */
+  hydrated: boolean;
+  hydrate: () => Promise<void>;
+  /** Store the profile after a successful sign-in (the session itself is the HttpOnly cookie). */
+  setAuth: (user: User) => void;
   updateUser: (user: Partial<User>) => void;
   logout: () => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => {
-  // Safe extraction of initial storage state if in browser context
-  let initialToken = null;
-  let initialUser = null;
-  if (typeof window !== 'undefined') {
-    initialToken = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      try {
-        initialUser = JSON.parse(storedUser);
-      } catch (e) {
-        localStorage.removeItem('user');
-      }
-    }
-  }
+/**
+ * The session lives only in the API's HttpOnly cookie — nothing secret (and no
+ * personal data) is kept in localStorage. `hydrate()` asks the API for the
+ * current user once after mount, so server and first client render agree.
+ */
+export const useAuthStore = create<AuthState>((set, get) => ({
+  user: null,
+  isAuthenticated: false,
+  hydrated: false,
 
-  return {
-    user: initialUser,
-    token: initialToken,
-    isAuthenticated: !!initialToken,
-    
-    setAuth: (user, token) => {
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('token', token);
-        localStorage.setItem('user', JSON.stringify(user));
+  hydrate: async () => {
+    if (get().hydrated) return;
+    // Remove anything older versions of the app stored in the browser.
+    try {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+    } catch {}
+    try {
+      const user = await api<User>('/auth/me');
+      set({ user, isAuthenticated: true, hydrated: true });
+    } catch (e) {
+      if (!(e instanceof ApiError) || e.status === 401 || e.status === 0) {
+        set({ user: null, isAuthenticated: false, hydrated: true });
+      } else {
+        set({ hydrated: true });
       }
-      set({ user, token, isAuthenticated: true });
-    },
-    
-    updateUser: (updatedFields) => {
-      set((state) => {
-        if (!state.user) return state;
-        const newUser = { ...state.user, ...updatedFields };
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('user', JSON.stringify(newUser));
-        }
-        return { user: newUser };
-      });
-    },
-    
-    logout: () => {
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        // Call backend API logout to clear httpOnly cookies
-        fetch(`${API_BASE}/auth/logout`, { method: 'POST' }).catch(() => {});
-      }
-      set({ user: null, token: null, isAuthenticated: false });
     }
-  };
-});
+  },
+
+  setAuth: (user) => set({ user, isAuthenticated: true, hydrated: true }),
+
+  updateUser: (fields) => {
+    const current = get().user;
+    if (!current) return;
+    set({ user: { ...current, ...fields } });
+  },
+
+  logout: () => {
+    // Ends the session on the server (all devices) and clears the cookie.
+    api('/auth/logout', { method: 'POST', keepalive: true }).catch(() => {});
+    set({ user: null, isAuthenticated: false });
+  },
+}));

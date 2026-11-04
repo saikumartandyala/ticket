@@ -1,398 +1,378 @@
 'use client';
 
-import React, { useState, useEffect, useRef, CSSProperties } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { API_BASE } from '../lib/api';
-import { useTilt } from '../lib/useTilt';
-import { useUiStore } from '../store/uiStore';
-import { NewLanding } from '../components/new-ui/NewLanding';
+import { ArrowRight, ArrowUpRight, Plus, Search, Ticket } from 'lucide-react';
+import { api } from '../lib/api';
+import type { Listing } from '../lib/types';
+import { useCategories } from '../lib/useCategories';
+import { hhmm, money, parseLocal } from '../lib/format';
+import { ListingRow, ListingRowSkeleton } from '../components/tickets/ListingRow';
+import { Button, ButtonLink } from '../components/ui/Button';
+import { EmptyState } from '../components/ui/misc';
+import { CountUp, FlipText, Marquee, RotatingWord } from '../components/motion';
+import { cn } from '../lib/cn';
 
-const ACCENT: Record<string, string> = {
-  train: '#38bdf8', bus: '#fbbf24', ipl: '#a855f7', cricket: '#34d399', concert: '#f472b6', event: '#c084fc',
-};
-const money = (n: number) => '₹' + n.toLocaleString('en-IN');
+const WORDS = ['train ticket', 'bus seat', 'IPL pass', 'concert ticket', 'match ticket'];
+const QUICK = ['Mumbai', 'Bengaluru', 'Delhi', 'Chennai', 'Wankhede'];
 
-const CATEGORIES = ['Train', 'Bus', 'IPL', 'Cricket', 'Concert', 'Event'];
-
-const FLOW = [
-  { handle: 'rajdhani.3a', kind: 'Train · Indian Railways', big: 'NDLS→BCT', meta: 'Tonight 20:45 · ₹1,850', accent: '#38bdf8', art: 'linear-gradient(200deg,#0b2a3d,#123b52 40%,#061621)' },
-  { handle: 'volvo.sleeper', kind: 'Bus · VRL A/C', big: 'BLR→HYD', meta: 'Tonight 22:15 · ₹899', accent: '#fbbf24', art: 'linear-gradient(200deg,#3a2a08,#5a3f10 40%,#1a1205)' },
-  { handle: 'wankhede.north', kind: 'IPL · Wankhede Stadium', big: 'MI vs CSK', meta: 'Sat 19:30 · ₹3,200', accent: '#a855f7', art: 'linear-gradient(200deg,#2c1450,#4c1d95 45%,#150a26)' },
-  { handle: 'eden.blockd', kind: 'Cricket · Eden Gardens', big: 'IND vs AUS', meta: 'Sun 13:30 · ₹2,750', accent: '#34d399', art: 'linear-gradient(200deg,#08301f,#0f4a30 45%,#04180f)' },
-  { handle: 'diljit.gold', kind: 'Concert · Ambience Arena', big: 'Diljit', meta: 'Tonight 20:00 · ₹5,500', accent: '#f472b6', art: 'linear-gradient(200deg,#3f0f2c,#6b1746 45%,#1d0715)' },
-  { handle: 'techsparks.pass', kind: 'Event · Jio World Centre', big: 'Summit', meta: 'Tomorrow 09:00 · ₹2,100', accent: '#c084fc', art: 'linear-gradient(200deg,#2a1a45,#3f2a6b 45%,#130c22)' },
+const SELL_STEPS = [
+  ['List it', 'Pick a category, add the route or event, set a price within the fair band. Takes about a minute.'],
+  ['Review requests', 'People who need the ticket send a request. You choose who to accept.'],
+  ['Hand it over', 'Chat privately, swap numbers when you’re both ready, and settle over UPI or cash.'],
 ];
 
-const MOCK_LISTINGS = [
-  { id: '1', category: { slug: 'train', name: 'Train' }, title: 'NDLS → BCT', sub: 'Tonight 20:45 · 3A · Seat 42', asking_price: '1850', original_price: '2450', owner: { name: 'Aarav S.', avg_rating: 4.9 }, hours: 3 },
-  { id: '2', category: { slug: 'ipl', name: 'IPL' }, title: 'MI vs CSK', sub: 'Sat 19:30 · North Stand · 2 seats', asking_price: '3200', original_price: '4000', owner: { name: 'Priya M.', avg_rating: 4.8 }, hours: 6 },
-  { id: '3', category: { slug: 'concert', name: 'Concert' }, title: 'Diljit Dosanjh Live', sub: 'Tonight 20:00 · Gold · 1 pass', asking_price: '5500', original_price: '7000', owner: { name: 'Rohan K.', avg_rating: 4.7 }, hours: 26 },
+const BUY_STEPS = [
+  ['Find a seat', 'Search the board by city, route or event. Listings close automatically at departure.'],
+  ['Request it', 'Send a short note to the seller. Nothing is charged — there’s nothing to pay us.'],
+  ['Meet & confirm', 'Once accepted, verify the ticket before paying, then mark the transfer complete.'],
 ];
 
-const STEPS = [
-  { num: 'STEP 01', title: 'List in 40 seconds', body: 'Pick a category, drop the route or event, set your asking price. No verification queue, no fees.' },
-  { num: 'STEP 02', title: 'Get matched instantly', body: 'Seekers watching that route or event get a live alert the moment your listing goes up.' },
-  { num: 'STEP 03', title: 'Talk and transfer', body: 'Chat opens, contact is revealed, and you settle it directly — UPI, cash, whatever suits you both.' },
-];
-
-const BENTO = [
-  { title: 'Verified identity', body: 'Email plus phone verification on every profile, with a public transfer history.' },
-  { title: 'Urgency-aware feed', body: 'Listings glow and rank higher as departure approaches, so nothing goes to waste.' },
-  { title: 'Route alerts', body: 'Save a route or artist and get pinged the second a matching ticket appears.' },
-  { title: 'Rated on both sides', body: 'Transferors and seekers rate each other after every completed handover.' },
+const FACTS = [
+  ['₹0', 'Fees', 'Listing, browsing and chatting are free. We never touch the money.'],
+  ['30–90%', 'Fair price band', 'Asking prices must sit between 30% and 90% of face value. No scalping.'],
+  ['2-WAY', 'Consent to share', 'Phone numbers are revealed only after the seller accepts a request.'],
+  ['1–5', 'Rated both sides', 'Buyers and sellers rate each other after every completed handover.'],
 ];
 
 const FAQS = [
-  { q: 'Do you take a cut of the ticket price?', a: 'No. Listing and searching are free and we never process the payment. You settle directly with the other person.' },
-  { q: 'Is it legal to transfer my ticket?', a: 'It depends on the operator or venue. We show the transfer rules for each category and ask both parties to confirm them before meeting.' },
-  { q: 'How do I know the other person is real?', a: 'Every account is email and phone verified, carries a public rating and shows the number of completed transfers.' },
-  { q: 'What if the transfer falls through?', a: 'Reopen the listing with one tap and rate the experience. Repeated no-shows lose their ability to list.' },
+  ['Do you take a cut?', 'No. TickOrbit doesn’t process payments, so there’s nothing to take a cut of. You agree a price within the fair band and settle directly with the other person.'],
+  ['Is transferring my ticket allowed?', 'It depends on the operator or venue. Many event tickets and some travel bookings allow a name change or transfer; others don’t. Check your booking’s terms before listing — if the ticket is non-transferable, please don’t list it.'],
+  ['How do I know the other person is genuine?', 'Every account verifies its email. Profiles show a rating and the number of completed transfers, and you can chat before sharing any contact details. Always check the PNR or barcode before paying.'],
+  ['What happens if the handover falls through?', 'Nothing is charged, so there’s nothing to refund. The seller’s listing stays open until it closes at departure time, and both sides can rate the experience.'],
+  ['When does my listing disappear?', 'Automatically at the departure or start time you enter. You can also cancel it any time from your dashboard.'],
 ];
 
-function decorate(l: any) {
-  const slug = l.category?.slug || 'event';
-  const accent = ACCENT[slug] || '#c084fc';
-  const price = parseFloat(l.asking_price);
-  const face = parseFloat(l.original_price);
-  const hours = l.hours ?? Math.max(1, Math.round((new Date(l.expires_at).getTime() - Date.now()) / 3.6e6));
-  const urgent = hours <= 6;
-  const sub = l.sub || (l.origin_city && l.destination_city ? `${l.origin_city} → ${l.destination_city}` : `${l.venue_name || ''}${l.venue_city ? ', ' + l.venue_city : ''}`);
-  return {
-    id: l.id,
-    accent,
-    category: l.category?.name || 'Ticket',
-    title: l.title,
-    sub,
-    price: money(price),
-    face: money(face),
-    savings: face > 0 ? Math.round((1 - price / face) * 100) + '%' : '',
-    expires: hours < 24 ? `${hours}h left` : `${Math.round(hours / 24)}d left`,
-    rating: l.owner?.avg_rating || '5.0',
-    seller: l.owner?.name || 'Seller',
-    urgent,
-  };
-}
-
-function ClassicLanding() {
-  const router = useRouter();
-  const heroInner = useTilt<HTMLDivElement>(11, 8);
-
-  const [query, setQuery] = useState('');
-  const [listings, setListings] = useState<any[]>(MOCK_LISTINGS);
-  const [flowIndex, setFlowIndex] = useState(2);
-  const [openFaq, setOpenFaq] = useState<number>(0);
-
-  const flowRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    fetch(`${API_BASE}/listings`)
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((data) => { if (Array.isArray(data) && data.length) setListings(data.slice(0, 3)); })
-      .catch(() => {});
-  }, []);
-
-  // Flow carousel drag + wheel
-  useEffect(() => {
-    const el = flowRef.current;
-    if (!el) return;
-    let downX: number | null = null;
-    let lock = 0;
-    const moveFlow = (d: number) => setFlowIndex((i) => (i + d + FLOW.length) % FLOW.length);
-    const down = (e: PointerEvent) => { downX = e.clientX; el.style.cursor = 'grabbing'; };
-    const up = (e: PointerEvent) => {
-      if (downX == null) return;
-      const dx = e.clientX - downX; downX = null; el.style.cursor = 'grab';
-      if (Math.abs(dx) > 45) moveFlow(dx < 0 ? 1 : -1);
-    };
-    const wheel = (e: WheelEvent) => {
-      const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : 0;
-      if (!d) return;
-      e.preventDefault();
-      const now = Date.now();
-      if (now - lock < 420) return;
-      lock = now; moveFlow(d > 0 ? 1 : -1);
-    };
-    el.addEventListener('pointerdown', down);
-    window.addEventListener('pointerup', up);
-    el.addEventListener('wheel', wheel, { passive: false });
-    return () => {
-      el.removeEventListener('pointerdown', down);
-      window.removeEventListener('pointerup', up);
-      el.removeEventListener('wheel', wheel);
-    };
-  }, []);
-
-  const moveFlow = (d: number) => setFlowIndex((i) => (i + d + FLOW.length) % FLOW.length);
-  const goBrowse = () => router.push(query ? `/tickets?query=${encodeURIComponent(query)}` : '/tickets');
-  const featured = listings.map(decorate);
-
+function FaqItem({ q, a, open, onToggle }: { q: string; a: string; open: boolean; onToggle: () => void }) {
   return (
-    <div>
-      {/* ============ HERO ============ */}
-      <section style={{ maxWidth: 1280, margin: '0 auto', padding: '72px 20px 40px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))', gap: 48, alignItems: 'center' }}>
-        <div className="anim-rise">
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 9, padding: '7px 14px', borderRadius: 999, border: '1px solid rgba(168,85,247,.35)', background: 'rgba(168,85,247,.09)', fontSize: 12.5, color: '#d8c9ff', marginBottom: 22 }}>
-            <span style={{ width: 7, height: 7, borderRadius: 99, background: '#4ade80', boxShadow: '0 0 10px #4ade80' }} className="anim-pulse" />
-            Free to list · Free to search · No commission
-          </div>
-          <h1 className="font-display" style={{ fontWeight: 800, fontSize: 'clamp(40px,6.4vw,74px)', lineHeight: 1.02, letterSpacing: '-.035em', margin: '0 0 20px', color: '#fff' }}>
-            Last Minute Tickets.<br />
-            <span style={{ background: 'linear-gradient(100deg,#c084fc,#a855f7 45%,#7c3aed)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>Real Connections.</span>
-          </h1>
-          <p style={{ fontSize: 17, lineHeight: 1.65, color: '#a99cc0', maxWidth: 520, margin: '0 0 30px' }}>
-            Plans changed? Pass your train, bus, IPL or concert ticket to someone who needs it tonight. We connect the two of you directly — no commission, no checkout, no middleman.
-          </p>
-
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, padding: 10, borderRadius: 20, border: '1px solid rgba(168,85,247,.25)', background: 'rgba(255,255,255,.045)', backdropFilter: 'blur(20px)', boxShadow: '0 0 60px rgba(124,58,237,.22) inset, 0 20px 50px rgba(0,0,0,.5)', maxWidth: 560 }}>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && goBrowse()}
-              placeholder="Search route, match or artist — e.g. Delhi → Mumbai"
-              style={{ flex: '1 1 220px', minWidth: 0, background: 'transparent', border: 'none', outline: 'none', color: '#fff', fontSize: 15, padding: '12px 14px' }}
-            />
-            <button onClick={goBrowse} className="btn-violet" style={{ padding: '12px 26px', fontSize: 14.5 }}>Find tickets</button>
-          </div>
-
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 9, marginTop: 20 }}>
-            {CATEGORIES.map((c) => (
-              <button key={c} onClick={() => router.push(`/tickets?category=${c.toLowerCase()}`)} className="cat-pill" style={{ padding: '8px 15px', borderRadius: 999, border: '1px solid rgba(168,85,247,.22)', background: 'rgba(255,255,255,.04)', color: '#cbbfe0', fontSize: 13, cursor: 'pointer' }}>{c}</button>
-            ))}
-          </div>
+    <div className="border-b border-line">
+      <button onClick={onToggle} aria-expanded={open} className="group flex w-full items-center justify-between gap-6 py-5 text-left text-[15px] font-medium">
+        <span className="transition-colors group-hover:text-accent">{q}</span>
+        <span className={cn('relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-line-strong transition-all duration-500 ease-out-expo', open && 'rotate-45 border-accent bg-accent text-accent-ink')} aria-hidden>
+          <span className="absolute h-px w-3 bg-current" />
+          <span className="absolute h-3 w-px bg-current" />
+        </span>
+      </button>
+      <div className={cn('grid transition-[grid-template-rows,opacity] duration-500 ease-out-expo', open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0')}>
+        <div className="overflow-hidden">
+          <p className="max-w-2xl pb-5 text-[15px] leading-relaxed text-ink-2">{a}</p>
         </div>
-
-        {/* 3D floating ticket hero */}
-        <div style={{ position: 'relative', height: 'clamp(360px,44vw,520px)', perspective: 1400 }}>
-          <div ref={heroInner} style={{ position: 'absolute', inset: 0, transformStyle: 'preserve-3d', transition: 'transform .25s ease-out' }}>
-            <div style={{ position: 'absolute', left: '50%', top: '50%', width: 'min(360px,80%)', marginLeft: 'min(-180px,-40%)', marginTop: -115, height: 230, transform: 'translateZ(60px) rotateZ(-7deg)', animation: 'lmpDrift 8s ease-in-out infinite' }}>
-              <div style={{ position: 'absolute', inset: -30, borderRadius: 40, background: 'radial-gradient(circle,rgba(168,85,247,.5),transparent 65%)', filter: 'blur(28px)' }} />
-              <div style={{ position: 'relative', height: '100%', borderRadius: 26, padding: 24, background: 'linear-gradient(150deg,rgba(192,132,252,.28),rgba(124,58,237,.14) 45%,rgba(255,255,255,.05))', border: '1px solid rgba(214,188,255,.45)', backdropFilter: 'blur(16px)', boxShadow: '0 40px 90px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.6), inset 0 -30px 60px rgba(124,58,237,.28)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <div style={{ fontSize: 11, letterSpacing: '.22em', color: '#d9c8ff', textTransform: 'uppercase' }}>Rajdhani Express</div>
-                    <div className="font-display" style={{ fontWeight: 700, fontSize: 27, color: '#fff', marginTop: 8, letterSpacing: '-.02em' }}>NDLS → BCT</div>
-                  </div>
-                  <div style={{ padding: '6px 11px', borderRadius: 999, background: 'rgba(255,255,255,.14)', border: '1px solid rgba(255,255,255,.3)', fontSize: 11, color: '#fff' }}>3A · Seat 42</div>
-                </div>
-                <div className="ticket-divider-bright" />
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-                  <div>
-                    <div style={{ fontSize: 11, color: '#c9b6f0' }}>Tonight · 20:45</div>
-                    <div className="font-display" style={{ fontWeight: 700, fontSize: 24, color: '#fff' }}>₹1,850</div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 11, color: '#c9b6f0', textDecoration: 'line-through' }}>₹2,450</div>
-                    <div style={{ fontSize: 12, color: '#86efac', fontWeight: 600 }}>24% below face</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div style={{ position: 'absolute', left: '2%', top: '8%', width: 200, height: 120, transform: 'translateZ(-90px) rotateZ(-14deg)', animation: 'lmpDriftB 11s ease-in-out infinite', borderRadius: 18, padding: 16, background: 'linear-gradient(150deg,rgba(255,255,255,.1),rgba(124,58,237,.1))', border: '1px solid rgba(168,85,247,.32)', backdropFilter: 'blur(10px)', boxShadow: '0 24px 60px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.35)' }}>
-              <div style={{ fontSize: 10, letterSpacing: '.2em', color: '#c4b1e8', textTransform: 'uppercase' }}>IPL · Wankhede</div>
-              <div className="font-display" style={{ fontWeight: 700, fontSize: 18, color: '#fff', marginTop: 8 }}>MI vs CSK</div>
-              <div style={{ fontSize: 12, color: '#9d90b6', marginTop: 6 }}>2 seats · ₹3,200</div>
-            </div>
-
-            <div style={{ position: 'absolute', right: '0%', bottom: '6%', width: 214, height: 126, transform: 'translateZ(20px) rotateZ(9deg)', animation: 'lmpDrift 9.5s ease-in-out infinite', borderRadius: 18, padding: 16, background: 'linear-gradient(150deg,rgba(255,255,255,.12),rgba(168,85,247,.12))', border: '1px solid rgba(192,132,252,.38)', backdropFilter: 'blur(10px)', boxShadow: '0 24px 60px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.4)' }}>
-              <div style={{ fontSize: 10, letterSpacing: '.2em', color: '#c4b1e8', textTransform: 'uppercase' }}>Concert · Gurugram</div>
-              <div className="font-display" style={{ fontWeight: 700, fontSize: 18, color: '#fff', marginTop: 8 }}>Diljit Dosanjh</div>
-              <div style={{ fontSize: 12, color: '#9d90b6', marginTop: 6 }}>Tonight 8 PM · ₹5,500</div>
-            </div>
-
-            <div style={{ position: 'absolute', left: '12%', bottom: '2%', width: 150, height: 150, borderRadius: '50%', border: '1px dashed rgba(168,85,247,.3)', animation: 'lmpSpin 26s linear infinite' }} />
-          </div>
-        </div>
-      </section>
-
-      {/* ============ FLOW CAROUSEL ============ */}
-      <section style={{ padding: '36px 0 70px', overflow: 'hidden' }}>
-        <div style={{ maxWidth: 1280, margin: '0 auto', padding: '0 20px 28px', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-          <div>
-            <h2 className="font-display" style={{ fontWeight: 700, fontSize: 'clamp(26px,3.4vw,38px)', letterSpacing: '-.03em', margin: 0, color: '#fff' }}>Every kind of ticket</h2>
-            <p style={{ color: '#9d90b6', margin: '8px 0 0', fontSize: 15 }}>Drag, scroll or use the arrows.</p>
-          </div>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button onClick={() => moveFlow(-1)} className="flow-arrow" style={arrowStyle}>←</button>
-            <button onClick={() => moveFlow(1)} className="flow-arrow" style={arrowStyle}>→</button>
-          </div>
-        </div>
-
-        <div ref={flowRef} style={{ position: 'relative', height: 'clamp(300px,38vw,400px)', perspective: 1600, touchAction: 'pan-y', cursor: 'grab', userSelect: 'none' }}>
-          <div style={{ position: 'absolute', left: '50%', bottom: '6%', width: 'min(820px,86vw)', height: 120, transform: 'translateX(-50%)', background: 'radial-gradient(ellipse at center, rgba(124,58,237,.35), transparent 70%)', filter: 'blur(34px)' }} />
-          {FLOW.map((c, i) => {
-            const n = FLOW.length;
-            let off = i - flowIndex;
-            if (off > n / 2) off -= n;
-            if (off < -n / 2) off += n;
-            const active = off === 0;
-            const a = Math.abs(off);
-            const depth = -Math.min(a, 3) * 190;
-            const x = off * (a > 2 ? 58 : 68);
-            const wrap: CSSProperties = {
-              position: 'absolute', left: '50%', top: '50%', width: 'min(320px,74vw)', height: 'clamp(250px,32vw,330px)',
-              transform: `translate(-50%,-50%) translateX(${x}%) translateZ(${depth}px) rotateY(${off * -13}deg) scale(${active ? 1 : 0.96})`,
-              transition: 'transform .6s cubic-bezier(.22,1,.36,1), opacity .6s ease, filter .6s ease',
-              opacity: a > 3 ? 0 : active ? 1 : 0.6 - a * 0.1,
-              filter: active ? 'none' : 'brightness(.42) saturate(.5)',
-              zIndex: 20 - a, cursor: 'pointer', pointerEvents: a > 3 ? 'none' : 'auto',
-            };
-            const card: CSSProperties = {
-              height: '100%', borderRadius: 26, padding: 20, display: 'flex', flexDirection: 'column', gap: 14,
-              background: 'linear-gradient(165deg,#120a1d,#08050e)',
-              border: `1px solid ${active ? 'rgba(192,132,252,.85)' : 'rgba(168,85,247,.22)'}`,
-              boxShadow: active ? '0 0 0 1px rgba(168,85,247,.5), 0 0 60px rgba(168,85,247,.55), 0 40px 90px rgba(0,0,0,.75)' : '0 26px 60px rgba(0,0,0,.6)',
-            };
-            return (
-              <div key={c.handle} onClick={() => setFlowIndex(i)} style={wrap}>
-                <div style={card}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-                    <div>
-                      <div className="font-display" style={{ fontWeight: 600, fontSize: 19, color: '#fff', letterSpacing: '-.02em' }}>{c.handle}</div>
-                      <div style={{ fontSize: 10.5, letterSpacing: '.2em', textTransform: 'uppercase', color: '#a99cc0', marginTop: 5 }}>{c.kind}</div>
-                    </div>
-                    <div style={{ width: 26, height: 26, borderRadius: 9, background: c.accent, boxShadow: `0 6px 18px ${c.accent}77` }} />
-                  </div>
-                  <div style={{ position: 'relative', flex: 1, borderRadius: 18, overflow: 'hidden', background: c.art }}>
-                    <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 30%, rgba(5,3,8,.85))' }} />
-                    <div style={{ position: 'absolute', left: 16, bottom: 12, right: 16 }}>
-                      <div className="font-display" style={{ fontWeight: 800, fontSize: 'clamp(26px,3vw,38px)', color: '#fff', letterSpacing: '-.035em', lineHeight: 1 }}>{c.big}</div>
-                      <div style={{ fontSize: 12.5, color: '#c9b8e8', marginTop: 7 }}>{c.meta}</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 26 }}>
-          {FLOW.map((c, i) => (
-            <button key={c.handle} onClick={() => setFlowIndex(i)} style={{ width: i === flowIndex ? 26 : 8, height: 8, borderRadius: 99, border: 'none', cursor: 'pointer', transition: 'all .4s ease', background: i === flowIndex ? 'linear-gradient(90deg,#a855f7,#c084fc)' : 'rgba(255,255,255,.16)', boxShadow: i === flowIndex ? '0 0 14px rgba(168,85,247,.8)' : 'none' }} />
-          ))}
-        </div>
-      </section>
-
-      {/* ============ LIVE RIGHT NOW ============ */}
-      <section style={{ maxWidth: 1280, margin: '0 auto', padding: '10px 20px 60px' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 22 }}>
-          <div>
-            <h2 className="font-display" style={{ fontWeight: 700, fontSize: 'clamp(26px,3.4vw,38px)', letterSpacing: '-.03em', margin: 0, color: '#fff' }}>Live right now</h2>
-            <p style={{ color: '#9d90b6', margin: '8px 0 0', fontSize: 15 }}>Tickets expiring in the next few hours.</p>
-          </div>
-          <button onClick={() => router.push('/tickets')} className="btn-ghost" style={{ padding: '10px 20px', fontSize: 13.5 }}>Browse all →</button>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))', gap: 18 }}>
-          {featured.map((l) => (
-            <div key={l.id} onClick={() => router.push(`/tickets/${l.id}`)} className="ticket-card" style={l.urgent ? { boxShadow: 'inset 0 0 70px rgba(251,113,133,.14), 0 0 34px rgba(244,63,94,.22), 0 20px 50px rgba(0,0,0,.45)' } : undefined}>
-              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: l.accent, opacity: 0.9 }} />
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, letterSpacing: '.16em', textTransform: 'uppercase', color: '#c4b1e8' }}>
-                  <span style={{ width: 7, height: 7, borderRadius: 99, background: l.accent }} />{l.category}
-                </div>
-                <div style={urgencyStyle(l.urgent)}>{l.expires}</div>
-              </div>
-              <div className="font-display" style={{ fontWeight: 700, fontSize: 20, color: '#fff', marginTop: 14, letterSpacing: '-.02em' }}>{l.title}</div>
-              <div style={{ fontSize: 13, color: '#9d90b6', marginTop: 5 }}>{l.sub}</div>
-              <div className="ticket-divider" style={{ margin: '16px 0' }} />
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-                <div>
-                  <div className="font-display" style={{ fontWeight: 700, fontSize: 22, color: '#fff' }}>{l.price}</div>
-                  <div style={{ fontSize: 12, color: '#8b7fa3', textDecoration: 'line-through' }}>{l.face}</div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 12, color: '#86efac', fontWeight: 600 }}>{l.savings} off</div>
-                  <div style={{ fontSize: 12, color: '#9d90b6', marginTop: 4 }}>★ {l.rating} · {l.seller}</div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ============ HOW IT WORKS ============ */}
-      <section style={{ maxWidth: 1280, margin: '0 auto', padding: '40px 20px 60px' }}>
-        <h2 className="font-display" style={{ fontWeight: 700, fontSize: 'clamp(26px,3.4vw,38px)', letterSpacing: '-.03em', margin: '0 0 8px', color: '#fff' }}>How it works</h2>
-        <p style={{ color: '#9d90b6', margin: '0 0 28px', fontSize: 15 }}>Three steps. No payment ever passes through us.</p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 18 }}>
-          {STEPS.map((st) => (
-            <div key={st.num} style={{ position: 'relative', padding: '28px 24px', borderRadius: 24, border: '1px solid rgba(168,85,247,.2)', background: 'linear-gradient(160deg,rgba(255,255,255,.06),rgba(255,255,255,.02))', backdropFilter: 'blur(16px)', boxShadow: 'inset 0 0 60px rgba(124,58,237,.16), 0 20px 50px rgba(0,0,0,.4)', overflow: 'hidden' }}>
-              <div style={{ position: 'absolute', right: -30, top: -30, width: 120, height: 120, borderRadius: '50%', background: 'radial-gradient(circle,rgba(168,85,247,.35),transparent 70%)', filter: 'blur(14px)' }} />
-              <div className="font-display" style={{ fontWeight: 800, fontSize: 13, color: '#c084fc', letterSpacing: '.2em' }}>{st.num}</div>
-              <div className="font-display" style={{ fontWeight: 700, fontSize: 21, color: '#fff', marginTop: 12, letterSpacing: '-.02em' }}>{st.title}</div>
-              <p style={{ color: '#a396bb', fontSize: 14.5, lineHeight: 1.6, margin: '10px 0 0' }}>{st.body}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ============ BENTO ============ */}
-      <section style={{ maxWidth: 1280, margin: '0 auto', padding: '20px 20px 60px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(250px,1fr))', gap: 16 }}>
-          <div style={{ gridColumn: 'span 2', minWidth: 0, padding: 32, borderRadius: 26, border: '1px solid rgba(192,132,252,.3)', background: 'linear-gradient(150deg,rgba(168,85,247,.16),rgba(255,255,255,.03))', backdropFilter: 'blur(18px)', boxShadow: 'inset 0 0 80px rgba(124,58,237,.22), 0 24px 60px rgba(0,0,0,.45)' }}>
-            <div className="font-display" style={{ fontWeight: 700, fontSize: 26, color: '#fff', letterSpacing: '-.02em' }}>Zero commission. Forever.</div>
-            <p style={{ color: '#a396bb', fontSize: 15, lineHeight: 1.65, margin: '12px 0 0', maxWidth: 540 }}>We never touch the money. Listing is free, searching is free, and you settle directly with the other person over UPI or cash — exactly like you would with a friend.</p>
-          </div>
-          {BENTO.map((b) => (
-            <div key={b.title} style={{ padding: 26, borderRadius: 26, border: '1px solid rgba(168,85,247,.18)', background: 'rgba(255,255,255,.035)', backdropFilter: 'blur(14px)', boxShadow: 'inset 0 0 50px rgba(124,58,237,.13)' }}>
-              <div className="font-display" style={{ fontWeight: 700, fontSize: 18, color: '#fff' }}>{b.title}</div>
-              <p style={{ color: '#9d90b6', fontSize: 14, lineHeight: 1.6, margin: '9px 0 0' }}>{b.body}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ============ FAQ ============ */}
-      <section style={{ maxWidth: 900, margin: '0 auto', padding: '20px 20px 80px' }}>
-        <h2 className="font-display" style={{ fontWeight: 700, fontSize: 'clamp(26px,3.4vw,38px)', letterSpacing: '-.03em', margin: '0 0 24px', color: '#fff' }}>Questions, answered</h2>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {FAQS.map((f, i) => {
-            const open = openFaq === i;
-            return (
-              <div key={f.q} onClick={() => setOpenFaq(open ? -1 : i)} style={{ padding: '20px 22px', borderRadius: 18, border: '1px solid rgba(168,85,247,.18)', background: 'rgba(255,255,255,.035)', cursor: 'pointer' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'center' }}>
-                  <span className="font-display" style={{ fontWeight: 600, fontSize: 16.5, color: '#fff' }}>{f.q}</span>
-                  <span style={{ color: '#c084fc', fontSize: 20, lineHeight: 1 }}>{open ? '−' : '+'}</span>
-                </div>
-                {open && <p style={{ color: '#a396bb', fontSize: 14.5, lineHeight: 1.65, margin: '12px 0 0' }}>{f.a}</p>}
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* ============ FOOTER ============ */}
-      <footer style={{ borderTop: '1px solid rgba(168,85,247,.16)', background: 'rgba(8,5,14,.6)' }}>
-        <div style={{ maxWidth: 1280, margin: '0 auto', padding: '44px 20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 28 }}>
-          <div>
-            <div className="font-display" style={{ fontWeight: 700, fontSize: 17, color: '#fff' }}>LastMinutePass</div>
-            <p style={{ color: '#8b7fa3', fontSize: 13.5, lineHeight: 1.6, margin: '10px 0 0', maxWidth: 260 }}>A connection layer for unused tickets in India. We are not a ticketing agent and we do not process payments.</p>
-          </div>
-          {[
-            { title: 'Product', items: ['Browse tickets', 'List a ticket', 'Route alerts', 'Pricing'] },
-            { title: 'Trust', items: ['Safety guide', 'Community rules', 'Report a user', 'Transfer rules'] },
-            { title: 'Company', items: ['About', 'Careers', 'Press', 'Contact'] },
-          ].map((col) => (
-            <div key={col.title}>
-              <div style={{ fontSize: 12, letterSpacing: '.18em', textTransform: 'uppercase', color: '#c084fc', marginBottom: 12 }}>{col.title}</div>
-              {col.items.map((it) => (
-                <div key={it} style={{ fontSize: 14, color: '#9d90b6', padding: '5px 0', cursor: 'pointer' }}>{it}</div>
-              ))}
-            </div>
-          ))}
-        </div>
-        <div style={{ borderTop: '1px solid rgba(255,255,255,.06)', padding: '18px 20px', textAlign: 'center', color: '#6f6485', fontSize: 12.5 }}>© 2026 LastMinutePass · Made in India</div>
-      </footer>
+      </div>
     </div>
   );
 }
 
-export default function Page() {
-  const mode = useUiStore((s) => s.mode);
-  return mode === 'new' ? <NewLanding /> : <ClassicLanding />;
-}
+export default function LandingPage() {
+  const router = useRouter();
+  const [q, setQ] = useState('');
+  const [listings, setListings] = useState<Listing[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [openFaq, setOpenFaq] = useState<number | null>(0);
+  const categories = useCategories();
 
-const arrowStyle: CSSProperties = { width: 44, height: 44, borderRadius: 999, border: '1px solid rgba(168,85,247,.3)', background: 'rgba(255,255,255,.04)', color: '#d8c9ff', fontSize: 17, cursor: 'pointer' };
-function urgencyStyle(urgent: boolean): CSSProperties {
-  return { padding: '5px 10px', borderRadius: 999, fontSize: 11.5, whiteSpace: 'nowrap', border: `1px solid ${urgent ? 'rgba(251,113,133,.45)' : 'rgba(168,85,247,.28)'}`, background: urgent ? 'rgba(244,63,94,.14)' : 'rgba(168,85,247,.1)', color: urgent ? '#fda4af' : '#c9b8e8' };
+  const load = useCallback(() => {
+    setFailed(false);
+    setListings(null);
+    api<Listing[]>('/listings')
+      .then((data) => setListings(Array.isArray(data) ? data : []))
+      .catch(() => { setFailed(true); setListings([]); });
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const soonest = (listings || [])
+    .slice()
+    .sort((a, b) => parseLocal(a.expires_at).getTime() - parseLocal(b.expires_at).getTime())
+    .slice(0, 6);
+
+  const countBy = (slug: string) => (listings || []).filter((l) => l.category?.slug === slug).length;
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const s = q.trim();
+    router.push(s ? `/tickets?query=${encodeURIComponent(s)}` : '/tickets');
+  };
+
+  return (
+    <>
+      {/* Hero */}
+      <section className="relative -mt-14 overflow-hidden pt-14">
+        <div className="aurora" aria-hidden />
+        <div className="grid-fade" aria-hidden />
+
+        <div className="container-page relative grid items-center gap-10 pb-10 pt-8 sm:pt-12 lg:grid-cols-[1fr_1.05fr] lg:gap-14 lg:pb-12 lg:pt-14">
+          <div className="flex flex-col justify-center">
+            <div data-reveal className="w-fit">
+              <Link
+                href="/tickets"
+                className="group inline-flex items-center gap-2.5 rounded-full border border-line-strong bg-surface/70 py-1 pl-1.5 pr-3 text-[13px] text-ink-2 shadow-card backdrop-blur transition-colors hover:border-ink-3 hover:text-ink"
+              >
+                <span className="flex items-center gap-1.5 rounded-full bg-accent/10 px-2 py-0.5 font-mono text-[11px] font-medium text-accent">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" />
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent" />
+                  </span>
+                  LIVE
+                </span>
+                {listings && listings.length > 0 ? (
+                  <span><CountUp value={listings.length} className="font-medium text-ink num" /> tickets on the board right now</span>
+                ) : (
+                  <span>Peer-to-peer ticket transfers in India</span>
+                )}
+                <ArrowRight className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
+              </Link>
+            </div>
+
+            <h1 className="mt-6 text-[42px] font-semibold leading-[1.02] tracking-[-0.04em] sm:text-[58px] lg:text-[66px]">
+              <span data-reveal style={{ ['--d' as any]: 1 }} className="block">Can&apos;t make it?</span>
+              <span data-reveal style={{ ['--d' as any]: 2 }} className="block text-ink-3">
+                Hand your
+                <span className="block"><RotatingWord words={WORDS} className="text-accent" /></span>
+              </span>
+              <span data-reveal style={{ ['--d' as any]: 3 }} className="block text-ink-3">to someone who can.</span>
+            </h1>
+
+            <p data-reveal style={{ ['--d' as any]: 4 }} className="mt-6 max-w-[520px] text-[17px] leading-relaxed text-ink-2">
+              A live board for train, bus, match and concert tickets that would otherwise go to waste. Sellers recover part of
+              the fare, buyers get a seat today — and you settle directly, with no fees.
+            </p>
+
+            <form
+              data-reveal
+              style={{ ['--d' as any]: 5 }}
+              onSubmit={submit}
+              role="search"
+              className="mt-8 flex max-w-[540px] items-center gap-1.5 rounded-xl border border-line-strong bg-surface/80 p-1.5 shadow-lift backdrop-blur-xl transition-[border-color,box-shadow] duration-300 focus-within:border-accent/60 focus-within:ring-4 focus-within:ring-accent/10"
+            >
+              <label className="relative flex-1">
+                <span className="sr-only">Search tickets</span>
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-ink-3" />
+                <input
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="City, route or event"
+                  className="h-11 w-full bg-transparent pl-10 pr-2 text-[15px] placeholder:text-ink-3 focus:outline-none"
+                />
+              </label>
+              <Button type="submit" size="md" className="h-11 px-5">
+                Search <ArrowRight className="h-4 w-4 group-hover:translate-x-0.5" />
+              </Button>
+            </form>
+            <div data-reveal style={{ ['--d' as any]: 6 }} className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 text-[13px] text-ink-3">
+              <span>Try</span>
+              {QUICK.map((c) => (
+                <Link
+                  key={c}
+                  href={`/tickets?query=${encodeURIComponent(c)}`}
+                  className="rounded-full border border-line bg-surface/50 px-2.5 py-1 text-ink-2 transition-all duration-200 hover:-translate-y-px hover:border-ink-3 hover:text-ink"
+                >
+                  {c}
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          {/* Live board */}
+          <div data-reveal style={{ ['--d' as any]: 3 }} className="relative self-center">
+            <div aria-hidden className="absolute -inset-4 -z-10 rounded-[28px] bg-gradient-to-br from-accent/20 via-transparent to-warn/10 opacity-70 blur-2xl" />
+            <div className="spotlight overflow-hidden rounded-xl border border-line bg-surface/90 shadow-lift backdrop-blur-xl">
+              <div className="flex items-center justify-between border-b border-line px-4 py-3 sm:px-5">
+                <div className="flex items-center gap-2.5">
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-50" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
+                  </span>
+                  <span className="text-sm font-semibold">Closing soon</span>
+                  {listings && listings.length > 0 && (
+                    <span className="rounded-full bg-subtle px-2 py-0.5 font-mono text-[11px] text-ink-2 num">{listings.length} live</span>
+                  )}
+                </div>
+                <Link href="/tickets" className="group flex items-center gap-1 text-[13px] text-ink-2 transition-colors hover:text-ink">
+                  View all <ArrowRight className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
+                </Link>
+              </div>
+
+              {listings === null ? (
+                Array.from({ length: 5 }).map((_, i) => <ListingRowSkeleton key={i} compact />)
+              ) : failed ? (
+                <EmptyState
+                  title="Couldn’t load the board"
+                  body="The server didn’t respond. Check your connection and try again."
+                  action={<Button variant="secondary" size="sm" onClick={load}>Try again</Button>}
+                />
+              ) : soonest.length === 0 ? (
+                <EmptyState
+                  icon={Ticket}
+                  title="The board is quiet right now"
+                  body="Listings appear here the moment someone posts one. Have a ticket you can’t use?"
+                  action={<ButtonLink href="/post" size="sm"><Plus className="h-4 w-4" />List a ticket</ButtonLink>}
+                />
+              ) : (
+                soonest.map((l, i) => <ListingRow key={l.id} listing={l} compact index={i} />)
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Ticker */}
+        {listings && listings.length > 0 && (
+          <div className="relative border-y border-line bg-surface/50 py-3 backdrop-blur">
+            <Marquee seconds={Math.max(28, listings.length * 7)}>
+              {listings.map((l) => (
+                <Link key={l.id} href={`/tickets/${l.id}`} data-track={`Ticker: ${l.title}`} className="group mx-6 flex shrink-0 items-center gap-3 text-[13px]">
+                  <span className="font-mono text-ink-3 num">{hhmm(l.departure_time) || '——'}</span>
+                  <span className="font-medium text-ink-2 transition-colors group-hover:text-ink">{l.title}</span>
+                  <span className="font-mono text-ink num">{money(l.asking_price)}</span>
+                  <span className="ml-3 h-1 w-1 rounded-full bg-line-strong" />
+                </Link>
+              ))}
+            </Marquee>
+          </div>
+        )}
+      </section>
+
+      {/* Categories */}
+      <section className="container-page mt-12">
+        <div data-reveal className="mb-6 flex items-end justify-between">
+          <div>
+            <div className="eyebrow">Categories</div>
+            <h2 className="mt-2 text-2xl font-semibold tracking-[-0.025em]">Every kind of ticket</h2>
+          </div>
+          <Link href="/tickets" className="link-u hidden text-sm text-ink-2 hover:text-ink sm:block">Browse all</Link>
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          {categories.map((c, i) => {
+            const Icon = c.icon;
+            const n = countBy(c.slug);
+            return (
+              <Link
+                key={c.slug}
+                href={`/tickets?category=${c.slug}`}
+                data-track={`Category tile: ${c.name}`}
+                data-reveal
+                style={{ ['--d' as any]: i }}
+                className="spotlight group flex flex-col gap-5 rounded-lg border border-line bg-surface p-5 shadow-card transition-[transform,box-shadow] duration-500 ease-out-expo hover:-translate-y-1 hover:shadow-lift"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-md border border-line bg-bg text-ink-2 transition-all duration-500 ease-out-expo group-hover:rotate-[-6deg] group-hover:scale-110 group-hover:border-accent/40 group-hover:bg-accent/10 group-hover:text-accent">
+                    <Icon className="h-5 w-5" />
+                  </span>
+                  <ArrowUpRight className="h-4 w-4 -translate-x-1 translate-y-1 text-ink-3 opacity-0 transition-all duration-500 ease-out-expo group-hover:translate-x-0 group-hover:translate-y-0 group-hover:opacity-100" />
+                </div>
+                <div>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-[15px] font-medium">{c.name}</span>
+                    {listings !== null && <span className="font-mono text-xs text-ink-3 num">{n}</span>}
+                  </div>
+                  <div className="mt-0.5 text-[13px] text-ink-3">{c.hint}</div>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* How it works */}
+      <section id="how" className="container-page mt-20 scroll-mt-20">
+        <div className="grid gap-10 lg:grid-cols-[320px_1fr] lg:gap-16">
+          <div data-reveal className="lg:sticky lg:top-24 lg:self-start">
+            <div className="eyebrow">How it works</div>
+            <h2 className="mt-3 text-[28px] font-semibold leading-tight tracking-[-0.03em] sm:text-[34px]">
+              Two people, one ticket, no middleman.
+            </h2>
+            <p className="mt-4 text-[15px] leading-relaxed text-ink-2">
+              We match people and keep the conversation private until both sides are ready. The money and the handover
+              stay between you.
+            </p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {[['If you’re selling', SELL_STEPS], ['If you need a ticket', BUY_STEPS]].map(([title, steps], col) => (
+              <div key={title as string} data-reveal style={{ ['--d' as any]: col + 1 }} className="spotlight rounded-lg border border-line bg-surface p-6 shadow-card sm:p-7">
+                <h3 className="text-[15px] font-semibold">{title as string}</h3>
+                <ol className="relative mt-7 space-y-7">
+                  <span aria-hidden className="absolute bottom-3 left-[13px] top-3 w-px bg-gradient-to-b from-accent/60 via-line-strong to-transparent" />
+                  {(steps as string[][]).map(([t, b], i) => (
+                    <li key={t} className="relative grid grid-cols-[28px_1fr] gap-4">
+                      <span className="relative z-[1] flex h-7 w-7 items-center justify-center rounded-full border border-line-strong bg-surface font-mono text-[11px] text-ink-2 num">0{i + 1}</span>
+                      <div className="pt-0.5">
+                        <div className="text-[15px] font-medium">{t}</div>
+                        <p className="mt-1 text-sm leading-relaxed text-ink-2">{b}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Fair by design */}
+      <section className="container-page mt-20">
+        <div data-reveal className="mb-6">
+          <div className="eyebrow">Fair by design</div>
+          <h2 className="mt-2 text-2xl font-semibold tracking-[-0.025em]">Rules the board enforces for you</h2>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {FACTS.map(([fig, t, b], i) => (
+            <div
+              key={t}
+              data-reveal
+              style={{ ['--d' as any]: i }}
+              className="spotlight group rounded-lg border border-line bg-surface p-6 shadow-card transition-[transform,box-shadow] duration-500 ease-out-expo hover:-translate-y-1 hover:shadow-lift"
+            >
+              <div className="font-mono text-[34px] font-medium leading-none tracking-[-0.03em] num">
+                <FlipText text={fig} delay={i * 120} speed={40} />
+              </div>
+              <div className="mt-5 text-[15px] font-medium">{t}</div>
+              <p className="mt-1 text-sm leading-relaxed text-ink-2">{b}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* FAQ */}
+      <section id="faq" className="container-page mt-20 scroll-mt-20">
+        <div className="grid gap-10 lg:grid-cols-[320px_1fr] lg:gap-16">
+          <div data-reveal>
+            <div className="eyebrow">Questions</div>
+            <h2 className="mt-3 text-[28px] font-semibold leading-tight tracking-[-0.03em] sm:text-[34px]">Before you start</h2>
+          </div>
+          <div data-reveal style={{ ['--d' as any]: 1 }} className="border-t border-line">
+            {FAQS.map(([qq, a], i) => (
+              <FaqItem key={qq} q={qq} a={a} open={openFaq === i} onToggle={() => setOpenFaq(openFaq === i ? null : i)} />
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="container-page mt-20">
+        <div data-reveal className="relative isolate overflow-hidden rounded-xl bg-inverse px-6 py-14 text-inverse-ink shadow-lift sm:px-12">
+          <div aria-hidden className="absolute -right-24 -top-24 -z-10 h-80 w-80 rounded-full bg-accent/40 blur-[90px]" />
+          <div aria-hidden className="absolute -bottom-32 left-1/3 -z-10 h-72 w-72 rounded-full bg-warn/20 blur-[90px]" />
+          <div
+            aria-hidden
+            className="absolute inset-0 -z-10 opacity-[0.08]"
+            style={{
+              backgroundImage: 'linear-gradient(currentColor 1px, transparent 1px), linear-gradient(90deg, currentColor 1px, transparent 1px)',
+              backgroundSize: '48px 48px',
+              maskImage: 'radial-gradient(ellipse 60% 80% at 80% 50%, #000, transparent)',
+              WebkitMaskImage: 'radial-gradient(ellipse 60% 80% at 80% 50%, #000, transparent)',
+            }}
+          />
+          <div className="flex flex-col gap-8 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-[28px] font-semibold leading-tight tracking-[-0.03em] sm:text-[36px]">Got a ticket you can&apos;t use?</h2>
+              <p className="mt-3 max-w-md text-[15px] opacity-70">List it in about a minute. It closes on its own at departure time, and people with matching alerts hear about it instantly.</p>
+            </div>
+            <ButtonLink href="/post" variant="accent" size="lg" className="self-start sm:self-auto">
+              List a ticket <ArrowRight className="h-4 w-4 group-hover:translate-x-1" />
+            </ButtonLink>
+          </div>
+        </div>
+      </section>
+    </>
+  );
 }

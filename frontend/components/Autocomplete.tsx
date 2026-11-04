@@ -2,9 +2,10 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { API_BASE } from '../lib/api';
+import { controlClass } from './ui/Field';
+import { cn } from '../lib/cn';
 
 type Kind = 'city' | 'station';
-type Theme = 'dark' | 'light';
 
 interface Item {
   label: string;
@@ -15,21 +16,22 @@ interface Item {
 }
 
 interface Props {
+  id?: string;
   value: string;
   onChange: (v: string) => void;
   kind: Kind;
   placeholder?: string;
-  theme?: Theme;
   onSelect?: (item: Item) => void;
+  'aria-invalid'?: boolean;
+  'aria-describedby'?: string;
 }
 
 /**
- * Autocomplete for the List-a-ticket From/To fields. Debounced calls to the
- * backend proxy (`/lookup/cities` or `/lookup/stations`), keyboard + mouse
- * selection, click-outside close. Free typing is still allowed if nothing
- * matches. Themed for the classic (dark) and new (light) UIs.
+ * City / station autocomplete. Debounced calls to the backend proxy
+ * (`/lookup/cities` or `/lookup/stations`), keyboard + mouse selection,
+ * click-outside close. Free typing is still allowed if nothing matches.
  */
-export default function Autocomplete({ value, onChange, kind, placeholder, theme = 'light', onSelect }: Props) {
+export default function Autocomplete({ id, value, onChange, kind, placeholder, onSelect, ...aria }: Props) {
   const [items, setItems] = useState<Item[]>([]);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
@@ -83,53 +85,41 @@ export default function Autocomplete({ value, onChange, kind, placeholder, theme
     else if (e.key === 'Escape') { setOpen(false); }
   };
 
-  const dark = theme === 'dark';
-  const lightInput: React.CSSProperties = {
-    width: '100%', padding: '14px 15px', borderRadius: 14, border: '1px solid rgba(37,99,235,.28)',
-    background: '#f6f8fd', color: '#0f172a', fontSize: 14.5, outline: 'none',
-  };
-  const menu: React.CSSProperties = {
-    position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0, zIndex: 60, maxHeight: 260, overflowY: 'auto',
-    borderRadius: 12, padding: 6,
-    border: dark ? '1px solid rgba(168,85,247,.3)' : '1px solid rgba(37,99,235,.2)',
-    background: dark ? '#161b27' : '#ffffff',
-    boxShadow: dark ? '0 20px 50px rgba(0,0,0,.5)' : '0 20px 50px rgba(15,23,42,.16)',
-  };
-  const rowStyle = (i: number): React.CSSProperties => ({
-    padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
-    background: i === active ? (dark ? 'rgba(168,85,247,.18)' : 'rgba(37,99,235,.1)') : 'transparent',
-  });
+  const listId = id ? `${id}-list` : undefined;
 
   return (
-    <div ref={boxRef} style={{ position: 'relative' }}>
+    <div ref={boxRef} className="relative">
       <input
-        className={dark ? 'field' : undefined}
+        id={id}
+        className={cn(controlClass, 'h-11')}
         value={value}
         placeholder={placeholder}
         autoComplete="off"
+        role="combobox"
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-autocomplete="list"
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={onKeyDown}
         onFocus={() => { if (items.length) setOpen(true); }}
-        style={dark ? { width: '100%', padding: '14px 15px', fontSize: 14.5 } : lightInput}
+        {...aria}
       />
       {open && (
-        <div style={menu}>
+        <div id={listId} role="listbox" className="absolute inset-x-0 top-[calc(100%+4px)] z-30 max-h-64 overflow-y-auto rounded-md border border-line bg-surface p-1 shadow-[0_12px_32px_rgb(0_0_0/0.12)]">
           {items.map((it, i) => (
             <div
               key={(it.code || '') + it.label + i}
+              role="option"
+              aria-selected={i === active}
               onMouseDown={(e) => { e.preventDefault(); pick(it); }}
               onMouseEnter={() => setActive(i)}
-              style={rowStyle(i)}
+              className={cn('cursor-pointer rounded px-3 py-2', i === active && 'bg-subtle')}
             >
-              <div style={{ fontSize: 14, color: dark ? '#fff' : '#0f172a' }}>
-                {kind === 'station' ? it.name : it.label}
-                {kind === 'station' && it.code && (
-                  <span style={{ marginLeft: 8, fontFamily: 'monospace', fontSize: 12, color: dark ? '#c084fc' : '#2563eb' }}>{it.code}</span>
-                )}
+              <div className="flex items-baseline justify-between gap-3 text-sm text-ink">
+                <span className="truncate">{kind === 'station' ? it.name : it.label}</span>
+                {kind === 'station' && it.code && <span className="font-mono text-xs text-ink-3">{it.code}</span>}
               </div>
-              {kind === 'station' && it.city && (
-                <div style={{ fontSize: 12, color: dark ? '#9d90b6' : '#6b7488', marginTop: 2 }}>{it.city}</div>
-              )}
+              {kind === 'station' && it.city && <div className="mt-0.5 text-xs text-ink-3">{it.city}</div>}
             </div>
           ))}
         </div>

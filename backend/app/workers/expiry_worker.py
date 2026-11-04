@@ -6,10 +6,11 @@ from app.workers.celery_app import celery_app
 from app.core.database import async_session_maker
 from app.models import TicketListing, User, Notification
 from app.services.sms_service import send_match_notification
+from app.core.timeutil import utcnow
 
 
 async def _expire_old_listings() -> int:
-    now = datetime.now(timezone.utc)
+    now = utcnow()
     async with async_session_maker() as db:
         result = await db.execute(
             select(TicketListing).where(
@@ -24,7 +25,7 @@ async def _expire_old_listings() -> int:
 
 
 async def _send_expiry_warnings() -> int:
-    now = datetime.now(timezone.utc)
+    now = utcnow()
     window_end = now + timedelta(hours=2)
     async with async_session_maker() as db:
         result = await db.execute(

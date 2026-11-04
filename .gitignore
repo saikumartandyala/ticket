@@ -44,3 +44,8 @@ Thumbs.db
 .pyc
 backend/app/api/v1/__pycache__/router.cpython-314.pyc
 backend/app/core/__pycache__/config.cpython-314.pyc
+
+# ===== Local HTTPS certificates (private keys) =====
+certs/
+*.pem
+design/preview.png

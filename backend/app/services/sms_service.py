@@ -12,6 +12,10 @@ async def send_otp_sms(phone: str, otp: str) -> bool:
     msg = f"Your LastMinutePass OTP is: {otp}. Valid for 10 minutes."
     
     if not settings.MSG91_API_KEY:
+        if settings.is_production:
+            # Never pretend to deliver (or write codes to disk) on a live server.
+            logger.error("OTP delivery is not configured - set the provider API key in the environment")
+            return False
         logger.warning(f"--- [SMS MOCK] Sending OTP to {phone}: {msg} ---")
         # Save to a local file inside the workspace for easy retrieval by developers
         try:

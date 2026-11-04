@@ -1,147 +1,227 @@
 'use client';
 
-import React, { useState, useEffect, Suspense, CSSProperties } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
-import { API_BASE } from '../../lib/api';
-import { useUiStore } from '../../store/uiStore';
-import { NewBrowse } from '../../components/new-ui/NewBrowse';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { BellRing, Plus, Search, SearchX, Ticket, X } from 'lucide-react';
+import { api } from '../../lib/api';
+import type { Listing } from '../../lib/types';
+import { categoryBySlug } from '../../lib/categories';
+import { useCategories } from '../../lib/useCategories';
+import { discountPct, parseLocal, parseUtc, toNumber } from '../../lib/format';
+import { BoardHeader, ListingRow, ListingRowSkeleton } from '../../components/tickets/ListingRow';
+import { Button, ButtonLink } from '../../components/ui/Button';
+import { Select } from '../../components/ui/Field';
+import { EmptyState, PageHeader } from '../../components/ui/misc';
+import { cn } from '../../lib/cn';
+import { trackSearch } from '../../lib/analytics';
 
-const ACCENT: Record<string, string> = {
-  train: '#38bdf8', bus: '#fbbf24', ipl: '#a855f7', cricket: '#34d399', concert: '#f472b6', event: '#c084fc',
-};
-const money = (n: number) => '₹' + n.toLocaleString('en-IN');
-const CATS = ['Train', 'Bus', 'IPL', 'Cricket', 'Concert', 'Event'];
-const TIME_OPTS = ['Next 6 hours', 'Today', 'Next 3 days', 'Anytime'];
+const SORTS = {
+  soonest: { label: 'Closing soonest', fn: (a: Listing, b: Listing) => parseLocal(a.expires_at).getTime() - parseLocal(b.expires_at).getTime() },
+  cheapest: { label: 'Lowest price', fn: (a: Listing, b: Listing) => toNumber(a.asking_price) - toNumber(b.asking_price) },
+  saving: { label: 'Biggest saving', fn: (a: Listing, b: Listing) => discountPct(b) - discountPct(a) },
+  newest: { label: 'Newest', fn: (a: Listing, b: Listing) => parseUtc(b.created_at).getTime() - parseUtc(a.created_at).getTime() },
+} as const;
+type SortKey = keyof typeof SORTS;
 
-const MOCK = [
-  { id: '1', category: { slug: 'train', name: 'Train' }, title: 'NDLS → BCT', origin_city: 'New Delhi', destination_city: 'Mumbai', asking_price: '1850', original_price: '2450', owner: { name: 'Aarav S.', avg_rating: 4.9 }, expires_at: new Date(Date.now() + 3 * 3.6e6).toISOString() },
-  { id: '2', category: { slug: 'ipl', name: 'IPL' }, title: 'MI vs CSK', venue_name: 'Wankhede', venue_city: 'Mumbai', asking_price: '3200', original_price: '4000', owner: { name: 'Priya M.', avg_rating: 4.8 }, expires_at: new Date(Date.now() + 6 * 3.6e6).toISOString() },
-  { id: '3', category: { slug: 'concert', name: 'Concert' }, title: 'Diljit Dosanjh Live', venue_name: 'Ambience Arena', venue_city: 'Gurugram', asking_price: '5500', original_price: '7000', owner: { name: 'Rohan K.', avg_rating: 4.7 }, expires_at: new Date(Date.now() + 26 * 3.6e6).toISOString() },
-  { id: '4', category: { slug: 'bus', name: 'Bus' }, title: 'Bengaluru → Hyderabad', origin_city: 'Bengaluru', destination_city: 'Hyderabad', asking_price: '899', original_price: '1200', owner: { name: 'Sneha R.', avg_rating: 4.9 }, expires_at: new Date(Date.now() + 5 * 3.6e6).toISOString() },
-  { id: '5', category: { slug: 'cricket', name: 'Cricket' }, title: 'IND vs AUS · ODI', venue_name: 'Eden Gardens', venue_city: 'Kolkata', asking_price: '2750', original_price: '3500', owner: { name: 'Vikram J.', avg_rating: 4.6 }, expires_at: new Date(Date.now() + 44 * 3.6e6).toISOString() },
-  { id: '6', category: { slug: 'event', name: 'Event' }, title: 'TechSparks Summit', venue_name: 'Jio World Centre', venue_city: 'Mumbai', asking_price: '2100', original_price: '3000', owner: { name: 'Ananya D.', avg_rating: 5.0 }, expires_at: new Date(Date.now() + 8 * 3.6e6).toISOString() },
+const PRICES = [
+  ['', 'Any price'],
+  ['1000', 'Under ₹1,000'],
+  ['2500', 'Under ₹2,500'],
+  ['5000', 'Under ₹5,000'],
+  ['10000', 'Under ₹10,000'],
 ];
 
-function decorate(l: any) {
-  const slug = l.category?.slug || 'event';
-  const accent = ACCENT[slug] || '#c084fc';
-  const price = parseFloat(l.asking_price);
-  const face = parseFloat(l.original_price);
-  const hours = Math.max(1, Math.round((new Date(l.expires_at).getTime() - Date.now()) / 3.6e6));
-  const urgent = hours <= 6;
-  const sub = l.origin_city && l.destination_city ? `${l.origin_city} → ${l.destination_city}` : `${l.venue_name || ''}${l.venue_city ? ', ' + l.venue_city : ''}`;
-  return {
-    id: l.id, accent, category: l.category?.name || 'Ticket', title: l.title, sub,
-    price: money(price), face: money(face),
-    savings: face > 0 ? Math.round((1 - price / face) * 100) + '%' : '',
-    expires: hours < 24 ? `${hours}h left` : `${Math.round(hours / 24)}d left`,
-    rating: l.owner?.avg_rating || '5.0', seller: l.owner?.name || 'Seller', urgent,
-    price_num: price, slug,
-  };
-}
-
-function urgencyStyle(urgent: boolean): CSSProperties {
-  return { padding: '5px 10px', borderRadius: 999, fontSize: 11.5, whiteSpace: 'nowrap', border: `1px solid ${urgent ? 'rgba(251,113,133,.45)' : 'rgba(168,85,247,.28)'}`, background: urgent ? 'rgba(244,63,94,.14)' : 'rgba(168,85,247,.1)', color: urgent ? '#fda4af' : '#c9b8e8' };
-}
-
-function BrowseContent() {
-  const searchParams = useSearchParams();
+function BrowseInner() {
   const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
 
-  const [listings, setListings] = useState<any[]>(MOCK);
-  const [filter, setFilter] = useState<string>(searchParams.get('category') ? cap(searchParams.get('category')!) : 'All');
-  const [maxPrice, setMaxPrice] = useState<number>(8000);
-  const query = searchParams.get('query') || '';
+  const query = params.get('query') || '';
+  const category = categoryBySlug(params.get('category'))?.slug || '';
+  const sort: SortKey = (params.get('sort') as SortKey) in SORTS ? (params.get('sort') as SortKey) : 'soonest';
+  const max = params.get('max') || '';
 
+  const [draft, setDraft] = useState(query);
+  const categories = useCategories();
+  const [listings, setListings] = useState<Listing[] | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => setDraft(query), [query]);
+
+  const setParam = useCallback(
+    (key: string, value: string) => {
+      const next = new URLSearchParams(params.toString());
+      if (value) next.set(key, value);
+      else next.delete(key);
+      const s = next.toString();
+      router.replace(s ? `${pathname}?${s}` : pathname, { scroll: false });
+    },
+    [params, pathname, router],
+  );
+
+  // Debounce typing into the URL.
   useEffect(() => {
-    let url = `${API_BASE}/listings`;
-    const params = new URLSearchParams();
-    if (query) params.append('query', query);
-    if (params.toString()) url += `?${params.toString()}`;
-    fetch(url)
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((data) => { if (Array.isArray(data) && data.length) setListings(data); })
-      .catch(() => {});
-  }, [query]);
+    if (draft.trim() === query) return;
+    const t = setTimeout(() => setParam('query', draft.trim()), 350);
+    return () => clearTimeout(t);
+  }, [draft, query, setParam]);
 
-  const decorated = listings.map(decorate);
-  const visible = decorated.filter((l) => (filter === 'All' || l.category === filter) && l.price_num <= maxPrice);
+  const load = useCallback(() => {
+    const qs = new URLSearchParams();
+    if (query) qs.set('query', query);
+    if (max) qs.set('max_price', max);
+    setListings(null);
+    setFailed(false);
+    api<Listing[]>(`/listings${qs.toString() ? `?${qs}` : ''}`)
+      .then((d) => setListings(Array.isArray(d) ? d : []))
+      .catch(() => { setFailed(true); setListings([]); });
+  }, [query, max]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Record what people search for (once per distinct query).
+  useEffect(() => { if (query) trackSearch(query, { category: category || null, max_price: max || null }); }, [query, category, max]);
+
+  const counts = useMemo(() => {
+    const c: Record<string, number> = {};
+    (listings || []).forEach((l) => { const s = l.category?.slug; if (s) c[s] = (c[s] || 0) + 1; });
+    return c;
+  }, [listings]);
+
+  const visible = useMemo(
+    () => (listings || []).filter((l) => !category || l.category?.slug === category).sort(SORTS[sort].fn),
+    [listings, category, sort],
+  );
+
+  const hasFilters = !!(query || category || max);
+  const clearAll = () => { setDraft(''); router.replace(pathname, { scroll: false }); };
+  const catName = categoryBySlug(category)?.name;
 
   return (
-    <section style={{ maxWidth: 1280, margin: '0 auto', padding: '40px 20px 80px' }}>
-      <h1 className="font-display" style={{ fontWeight: 800, fontSize: 'clamp(30px,4.4vw,46px)', letterSpacing: '-.035em', margin: '0 0 6px', color: '#fff' }}>Browse tickets</h1>
-      <p style={{ color: '#9d90b6', margin: '0 0 28px', fontSize: 15 }}>{visible.length} live listings across India · updated seconds ago</p>
+    <div className="container-page pt-10">
+      <PageHeader
+        eyebrow="Marketplace"
+        title={catName ? `${catName} tickets` : 'Browse tickets'}
+        description={
+          listings === null
+            ? 'Loading the board…'
+            : `${visible.length} ${visible.length === 1 ? 'listing' : 'listings'} open${query ? ` matching “${query}”` : ''}. Each one closes at its departure or start time.`
+        }
+      />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 22, alignItems: 'start' }}>
-        {/* Filter sidebar */}
-        <aside className="glass" style={{ position: 'sticky', top: 86, maxWidth: 300, padding: 24 }}>
-          <div className="font-display" style={{ fontWeight: 700, fontSize: 16, color: '#fff', marginBottom: 16 }}>Filters</div>
-          <div style={{ fontSize: 12, letterSpacing: '.16em', textTransform: 'uppercase', color: '#c084fc', marginBottom: 10 }}>Category</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 22 }}>
-            {['All', ...CATS].map((c) => {
-              const active = filter === c;
-              return (
-                <button key={c} onClick={() => setFilter(c)} style={{ padding: '7px 13px', borderRadius: 999, fontSize: 12.5, cursor: 'pointer', border: `1px solid ${active ? 'rgba(192,132,252,.6)' : 'rgba(168,85,247,.22)'}`, background: active ? 'rgba(168,85,247,.2)' : 'rgba(255,255,255,.04)', color: active ? '#fff' : '#b7abcc' }}>{c}</button>
-              );
-            })}
-          </div>
-          <div style={{ fontSize: 12, letterSpacing: '.16em', textTransform: 'uppercase', color: '#c084fc', marginBottom: 10 }}>Max price</div>
-          <input type="range" min={500} max={8000} step={100} value={maxPrice} onChange={(e) => setMaxPrice(+e.target.value)} style={{ width: '100%', accentColor: '#a855f7' }} />
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, color: '#9d90b6', margin: '6px 0 22px' }}><span>₹500</span><span style={{ color: '#fff' }}>{money(maxPrice)}</span></div>
-          <div style={{ fontSize: 12, letterSpacing: '.16em', textTransform: 'uppercase', color: '#c084fc', marginBottom: 10 }}>Departs within</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {TIME_OPTS.map((t) => (
-              <label key={t} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, color: '#b7abcc', cursor: 'pointer' }}><input type="radio" name="within" style={{ accentColor: '#a855f7' }} />{t}</label>
-            ))}
-          </div>
-          <button onClick={() => { setFilter('All'); setMaxPrice(8000); }} style={{ width: '100%', marginTop: 22, padding: 11, borderRadius: 12, border: '1px solid rgba(168,85,247,.3)', background: 'transparent', color: '#c9b8e8', fontSize: 13.5, cursor: 'pointer' }}>Reset filters</button>
-        </aside>
-
-        {/* Grid */}
-        <div style={{ gridColumn: 'span 2', minWidth: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 18 }}>
-          {visible.map((l) => (
-            <div key={l.id} onClick={() => router.push(`/tickets/${l.id}`)} className="ticket-card" style={l.urgent ? { boxShadow: 'inset 0 0 70px rgba(251,113,133,.14), 0 0 34px rgba(244,63,94,.22), 0 20px 50px rgba(0,0,0,.45)' } : undefined}>
-              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: l.accent }} />
-              <div style={{ position: 'absolute', left: -7, top: '52%', width: 14, height: 14, borderRadius: '50%', background: '#050308' }} />
-              <div style={{ position: 'absolute', right: -7, top: '52%', width: 14, height: 14, borderRadius: '50%', background: '#050308' }} />
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, letterSpacing: '.16em', textTransform: 'uppercase', color: '#c4b1e8' }}>
-                  <span style={{ width: 7, height: 7, borderRadius: 99, background: l.accent }} />{l.category}
-                </div>
-                <div style={urgencyStyle(l.urgent)}>{l.expires}</div>
-              </div>
-              <div className="font-display" style={{ fontWeight: 700, fontSize: 19, color: '#fff', marginTop: 14, letterSpacing: '-.02em' }}>{l.title}</div>
-              <div style={{ fontSize: 13, color: '#9d90b6', marginTop: 5 }}>{l.sub}</div>
-              <div className="ticket-divider" style={{ margin: '16px 0' }} />
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-                <div>
-                  <div className="font-display" style={{ fontWeight: 700, fontSize: 21, color: '#fff' }}>{l.price}</div>
-                  <div style={{ fontSize: 12, color: '#8b7fa3', textDecoration: 'line-through' }}>{l.face}</div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 12, color: '#86efac', fontWeight: 600 }}>{l.savings} off</div>
-                  <div style={{ fontSize: 12, color: '#9d90b6', marginTop: 4 }}>★ {l.rating} · {l.seller}</div>
-                </div>
-              </div>
-            </div>
-          ))}
+      {/* Toolbar */}
+      <div className="mt-6 flex flex-col gap-3 lg:flex-row">
+        <label className="relative flex-1">
+          <span className="sr-only">Search</span>
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-3" />
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="Search by city, route, venue or event"
+            className="h-11 w-full rounded-md border border-line-strong bg-surface pl-9 pr-9 text-[15px] placeholder:text-ink-3 transition-[border-color,box-shadow] duration-200 focus:border-accent/70 focus:outline-none focus:ring-4 focus:ring-accent/15"
+          />
+          {draft && (
+            <button aria-label="Clear search" onClick={() => setDraft('')} className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-ink-3 hover:text-ink">
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </label>
+        <div className="grid grid-cols-2 gap-3 lg:w-[400px]">
+          <Select aria-label="Sort" value={sort} onChange={(e) => setParam('sort', e.target.value === 'soonest' ? '' : e.target.value)}>
+            {Object.entries(SORTS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+          </Select>
+          <Select aria-label="Maximum price" value={max} onChange={(e) => setParam('max', e.target.value)}>
+            {PRICES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </Select>
         </div>
       </div>
-    </section>
+
+      {/* Category tabs */}
+      <div className="no-scrollbar -mx-4 mt-4 flex gap-1.5 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+        {[{ slug: '', name: 'All' }, ...categories].map((c) => {
+          const active = category === c.slug;
+          const n = c.slug ? counts[c.slug] || 0 : listings?.length || 0;
+          return (
+            <button
+              key={c.slug || 'all'}
+              data-track={`Category filter: ${c.name}`}
+              onClick={() => setParam('category', c.slug)}
+              className={cn(
+                'flex h-9 shrink-0 items-center gap-2 rounded-full border px-3.5 text-[13px] transition-all duration-300 ease-out-expo active:scale-95',
+                active ? 'border-ink bg-inverse text-inverse-ink shadow-[0_6px_16px_-6px_rgb(0_0_0/0.4)]' : 'border-line-strong bg-surface/60 text-ink-2 hover:-translate-y-px hover:border-ink-3 hover:text-ink',
+              )}
+            >
+              {c.name}
+              {listings !== null && <span className={cn('font-mono text-[11px] num', active ? 'opacity-70' : 'text-ink-3')}>{n}</span>}
+            </button>
+          );
+        })}
+        {hasFilters && (
+          <button onClick={clearAll} className="ml-1 flex h-9 shrink-0 items-center gap-1 px-2 text-[13px] text-ink-2 underline-offset-4 hover:text-ink hover:underline">
+            Clear filters
+          </button>
+        )}
+      </div>
+
+      {/* Board */}
+      <div className="mt-5 overflow-hidden rounded-xl border border-line bg-surface shadow-card">
+        {listings === null ? (
+          <>
+            <BoardHeader />
+            {Array.from({ length: 6 }).map((_, i) => <ListingRowSkeleton key={i} />)}
+          </>
+        ) : failed ? (
+          <EmptyState
+            title="Couldn’t load listings"
+            body="The server didn’t respond. Check your connection and try again."
+            action={<Button variant="secondary" size="sm" onClick={load}>Try again</Button>}
+          />
+        ) : visible.length === 0 ? (
+          hasFilters ? (
+            <EmptyState
+              icon={SearchX}
+              title="No tickets match"
+              body="Try a nearby city, a broader search or a higher price. Or set an alert and we’ll notify you when one is listed."
+              action={
+                <>
+                  <Button variant="secondary" size="sm" onClick={clearAll}>Clear filters</Button>
+                  <ButtonLink href="/dashboard?tab=alerts" size="sm"><BellRing className="h-4 w-4" />Create an alert</ButtonLink>
+                </>
+              }
+            />
+          ) : (
+            <EmptyState
+              icon={Ticket}
+              title="No tickets listed yet"
+              body="Be the first. Listing is free and takes about a minute."
+              action={<ButtonLink href="/post" size="sm"><Plus className="h-4 w-4" />List a ticket</ButtonLink>}
+            />
+          )
+        ) : (
+          <>
+            <BoardHeader />
+            {visible.map((l, i) => <ListingRow key={l.id} listing={l} index={Math.min(i, 12)} />)}
+          </>
+        )}
+      </div>
+
+      {listings !== null && visible.length > 0 && (
+        <div className="mt-4 flex flex-col gap-2 text-sm text-ink-2 sm:flex-row sm:items-center sm:justify-between">
+          <span>Not finding the right one?</span>
+          <Link href="/dashboard?tab=alerts" className="flex items-center gap-1.5 font-medium text-ink underline-offset-4 hover:underline">
+            <BellRing className="h-4 w-4" /> Get alerted when it’s listed
+          </Link>
+        </div>
+      )}
+    </div>
   );
 }
 
-function cap(s: string) { return s.charAt(0).toUpperCase() + s.slice(1); }
-
-function ClassicBrowse() {
+export default function BrowsePage() {
   return (
-    <Suspense fallback={<div style={{ padding: 48, textAlign: 'center', color: '#9d90b6' }}>Loading listings…</div>}>
-      <BrowseContent />
+    <Suspense fallback={<div className="container-page pt-10" />}>
+      <BrowseInner />
     </Suspense>
   );
-}
-
-export default function Page() {
-  const mode = useUiStore((s) => s.mode);
-  return mode === 'new' ? <NewBrowse /> : <ClassicBrowse />;
 }

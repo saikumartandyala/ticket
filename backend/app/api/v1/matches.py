@@ -7,6 +7,8 @@ from sqlalchemy.orm import selectinload
 from typing import List, Optional
 
 from app.core.database import get_db
+from app.services.analytics import track
+from app.core.timeutil import utcnow
 from app.api.deps import get_current_user
 from app.models import User, TicketListing, Match, Notification, SeekerAlert, Review, Category, Message
 from app.schemas import (
@@ -88,7 +90,7 @@ async def accept_match(
         raise HTTPException(status_code=400, detail=f"Match is in state {match.status}, cannot accept")
         
     match.status = "accepted"
-    match.updated_at = datetime.now(timezone.utc)
+    match.updated_at = utcnow()
     
     # Update parent listing to matched
     listing_res = await db.execute(select(TicketListing).where(TicketListing.id == match.listing_id))
@@ -96,7 +98,7 @@ async def accept_match(
     if listing:
         listing.status = "matched"
         listing.matched_user_id = match.seeker_id
-        listing.matched_at = datetime.now(timezone.utc)
+        listing.matched_at = utcnow()
         
     # Notify seeker
     notif = Notification(
@@ -108,6 +110,7 @@ async def accept_match(
     )
     db.add(notif)
     
+    track(db, "request_accepted", current_user.id, {"match_id": match.id, "listing_id": match.listing_id})
     await db.commit()
     await db.refresh(match)
     return match
@@ -133,7 +136,7 @@ async def decline_match(
         raise HTTPException(status_code=400, detail="Can only decline pending interest")
         
     match.status = "cancelled"
-    match.updated_at = datetime.now(timezone.utc)
+    match.updated_at = utcnow()
     
     # Notify seeker
     notif = Notification(
@@ -171,7 +174,7 @@ async def reveal_contact(
         
     match.status = "contact_revealed"
     if not match.contact_revealed_at:
-        match.contact_revealed_at = datetime.now(timezone.utc)
+        match.contact_revealed_at = utcnow()
         
     # Notify other party
     other_party_id = match.seeker_id if current_user.id == match.transferor_id else match.transferor_id
@@ -209,9 +212,9 @@ async def confirm_transfer(
         raise HTTPException(status_code=400, detail="Cannot confirm transfer at this stage")
         
     match.status = "transferred"
-    match.transfer_confirmed_at = datetime.now(timezone.utc)
+    match.transfer_confirmed_at = utcnow()
     match.confirmed_by = current_user.id
-    match.updated_at = datetime.now(timezone.utc)
+    match.updated_at = utcnow()
     
     # Update parent listing to transferred
     listing_res = await db.execute(select(TicketListing).where(TicketListing.id == match.listing_id))
@@ -241,6 +244,10 @@ async def confirm_transfer(
     )
     db.add(notif)
     
+    track(db, "transfer_completed", current_user.id, {
+        "match_id": match.id, "listing_id": match.listing_id,
+        "value": float(listing.asking_price) if listing else None,
+    })
     await db.commit()
     await db.refresh(match)
     return match
@@ -364,6 +371,7 @@ async def create_review(
         reviewee.rating_count += 1
         reviewee.avg_rating = (total_rating + payload.rating) / reviewee.rating_count
         
+    track(db, "review_left", current_user.id, {"match_id": match_id, "rating": payload.rating})
     await db.commit()
     await db.refresh(review)
     return review
