@@ -16,10 +16,11 @@ from app.api.v1.router import api_router
 from app.core import http_security, observability
 from app.models import Category
 
-# Static upload path setup
+# Local photo storage (development only; production uses Supabase Storage).
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "..", "static")
 UPLOAD_DIR = os.path.join(STATIC_DIR, "uploads")
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+if not settings.uses_cloud_storage:
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 def _add_missing_columns(sync_conn):
     """Tiny forward-only migration for columns added after a DB was created
@@ -105,8 +106,9 @@ app.add_middleware(
     max_age=600,
 )
 
-# Mount static folder for ticket uploads
-app.mount("/api/v1/static", StaticFiles(directory=STATIC_DIR), name="static")
+# Serve locally stored ticket photos (development only).
+if not settings.uses_cloud_storage:
+    app.mount("/api/v1/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 # Include main API router
 app.include_router(api_router, prefix=settings.API_V1_STR)

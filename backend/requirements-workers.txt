@@ -1,0 +1,5 @@
+# Only for the optional background workers / search (not deployed to Vercel).
+-r requirements.txt
+redis[hiredis]>=5.2
+celery[redis]>=5.4
+meilisearch>=0.31

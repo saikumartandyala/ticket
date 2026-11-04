@@ -6,6 +6,7 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
 
+from app.core import ratelimit
 from app.core.database import get_db
 from app.services.analytics import track
 from app.core.timeutil import utcnow
@@ -13,7 +14,7 @@ from app.api.deps import get_current_user
 from app.models import User, TicketListing, Match, Notification, SeekerAlert, Review, Category, Message
 from app.schemas import (
     MatchResponse, SeekerAlertCreate, SeekerAlertResponse,
-    ReviewCreate, ReviewResponse, CategoryBase, MessageResponse
+    ReviewCreate, ReviewResponse, CategoryBase, MessageResponse, MessageCreate
 )
 
 router = APIRouter()
@@ -449,3 +450,40 @@ async def get_match_messages(
     )
     return res.scalars().all()
 
+
+CHAT_OPEN_STATUSES = ("accepted", "contact_revealed", "transferred")
+
+
+@router.post("/matches/{id}/messages", response_model=MessageResponse, status_code=status.HTTP_201_CREATED)
+async def send_match_message(
+    id: str,
+    payload: MessageCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Send a chat message. Works on any server instance (unlike a socket, which
+    is pinned to one); the other side gets it over their socket when it's on
+    the same instance, or on their next refresh otherwise.
+    """
+    match = (await db.execute(select(Match).where(Match.id == id))).scalar_one_or_none()
+    if not match or current_user.id not in (match.seeker_id, match.transferor_id):
+        raise HTTPException(status_code=403, detail="Not authorized to message in this chat")
+    if match.status not in CHAT_OPEN_STATUSES:
+        raise HTTPException(status_code=400, detail="This chat is closed")
+    content = payload.content.strip()
+    if not content:
+        raise HTTPException(status_code=422, detail="Message can't be empty")
+    ratelimit.enforce_user(current_user.id, "chat", 20, 30)
+
+    message = Message(match_id=id, sender_id=current_user.id, content=content, msg_type="text")
+    db.add(message)
+    await db.commit()
+    await db.refresh(message)
+
+    from app.api.v1.websocket import manager
+    data = MessageResponse.model_validate(message).model_dump(mode="json")
+    other = match.seeker_id if current_user.id == match.transferor_id else match.transferor_id
+    await manager.send_personal_message(data, current_user.id)
+    await manager.send_personal_message(data, other)
+    return message

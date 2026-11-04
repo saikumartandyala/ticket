@@ -1,0 +1,10 @@
+# Local-only files that must never be uploaded to Vercel
+.env
+*.db
+*.sqlite3
+mock_otp_log.txt
+static/uploads/
+scripts/
+__pycache__/
+*.pyc
+Dockerfile

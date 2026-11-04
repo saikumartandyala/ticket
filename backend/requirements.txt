@@ -21,7 +21,3 @@ pillow>=13; python_version >= "3.11"
 pillow>=12.3; python_version < "3.11"
 urllib3>=2.8
 certifi>=2026.1.1
-# Optional integrations (workers / search) - imported only when configured.
-redis[hiredis]>=5.2
-celery[redis]>=5.4
-meilisearch>=0.31

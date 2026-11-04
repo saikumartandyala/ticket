@@ -49,6 +49,12 @@ class Settings(BaseSettings):
     MEILISEARCH_URL: Optional[str] = None
     MEILISEARCH_MASTER_KEY: Optional[str] = None
     
+    # Supabase Storage for ticket photos (required on Vercel: its disk is read-only).
+    # Without these, photos are saved to backend/static/uploads (local dev only).
+    SUPABASE_URL: Optional[str] = None            # https://<project-ref>.supabase.co
+    SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None  # server-only secret, never in the frontend
+    SUPABASE_BUCKET: str = "ticket-photos"         # a *public* bucket
+
     # Third party integrations (optional, fallback to mock in local environment)
     S3_BUCKET_NAME: Optional[str] = None
     S3_REGION: Optional[str] = None
@@ -83,6 +89,15 @@ class Settings(BaseSettings):
     )
 
     @property
+    def uses_cloud_storage(self) -> bool:
+        return bool(self.SUPABASE_URL and self.SUPABASE_SERVICE_ROLE_KEY)
+
+    @property
+    def storage_public_prefix(self) -> str:
+        """URL prefix of files in the public Supabase bucket."""
+        return f"{(self.SUPABASE_URL or '').rstrip('/')}/storage/v1/object/public/{self.SUPABASE_BUCKET}/"
+
+    @property
     def is_production(self) -> bool:
         return self.ENVIRONMENT == "production"
 
@@ -99,6 +114,8 @@ class Settings(BaseSettings):
             self.SECRET_KEY = secrets.token_urlsafe(48)
             logging.getLogger("app.startup").warning(
                 "SECRET_KEY is not set - using a temporary key; sessions end when the server restarts")
+        if self.is_production and self.DATABASE_URL.startswith("sqlite"):
+            raise ValueError("DATABASE_URL must point to Postgres (Supabase) in production")
         bad = [o for o in self.frontend_origins if not o.startswith("https://")]
         if bad and self.is_production:
             raise ValueError(f"FRONTEND_ORIGINS must be https in production: {bad}")

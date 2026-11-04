@@ -80,6 +80,7 @@ export default function ChatPage() {
   const [loadState, setLoadState] = useState<'loading' | 'ok' | 'error'>('loading');
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState('');
+  const [sending, setSending] = useState(false);
   const [conn, setConn] = useState<Conn>('connecting');
   const [busy, setBusy] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -111,6 +112,24 @@ export default function ChatPage() {
       .then((m) => { initialCount.current = m.length; setMessages(m); })
       .catch(() => { initialCount.current = 0; });
   }, [ready, loadMatch, matchId]);
+
+  // Poll as a fallback: on serverless hosting the other person's socket may be
+  // on a different instance, so their messages arrive here within a few seconds.
+  useEffect(() => {
+    if (!ready) return;
+    const tick = () => {
+      if (document.visibilityState !== 'visible') return;
+      api<Message[]>(`/matches/${matchId}/messages`)
+        .then((list) => setMessages((prev) => {
+          const known = new Set(prev.map((m) => m.id));
+          const fresh = list.filter((m) => !known.has(m.id));
+          return fresh.length ? [...prev, ...fresh] : prev;
+        }))
+        .catch(() => {});
+    };
+    const id = setInterval(tick, 4000);
+    return () => clearInterval(id);
+  }, [ready, matchId]);
 
   // Live socket with simple backoff reconnect.
   useEffect(() => {
@@ -159,15 +178,21 @@ export default function ChatPage() {
     el.style.height = Math.min(el.scrollHeight, 140) + 'px';
   }, [draft]);
 
-  const send = () => {
+  /** Sent over HTTPS (works on every server instance); the socket and the poll deliver replies. */
+  const send = async () => {
     const text = draft.trim();
-    if (!text) return;
-    if (wsRef.current?.readyState !== WebSocket.OPEN) {
-      toast('Not connected', 'Your message wasn’t sent. We’re reconnecting — try again in a moment.', 'error');
-      return;
-    }
-    wsRef.current.send(JSON.stringify({ content: text }));
+    if (!text || sending) return;
+    setSending(true);
     setDraft('');
+    try {
+      const m = await api<Message>(`/matches/${matchId}/messages`, { method: 'POST', body: { content: text } });
+      setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]));
+    } catch (e) {
+      setDraft(text);
+      toast('Message not sent', errorMessage(e), 'error');
+    } finally {
+      setSending(false);
+    }
   };
 
   const run = async (key: string, path: string, success?: string) => {

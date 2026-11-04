@@ -29,7 +29,8 @@ const csp = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''}`,
   "style-src 'self' 'unsafe-inline'",
-  `img-src 'self' data: blob: ${apiOrigin}`.trim(),
+  // Ticket photos live in Supabase Storage in production.
+  `img-src 'self' data: blob: ${apiOrigin} https://*.supabase.co`.trim(),
   "font-src 'self' data:",
   `connect-src 'self' ${apiOrigin} ${wsOrigin}`.trim(),
   "media-src 'self'",

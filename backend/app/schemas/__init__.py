@@ -27,8 +27,18 @@ def _normalize_identifier(identifier: str, channel: str) -> str:
     return _validate_identifier(identifier, channel)
 
 
-# Only files we stored ourselves (see services/storage_service.py) may be referenced.
-UPLOAD_PATH_RE = re.compile(r"^/api/v1/static/uploads/[0-9a-f]{32}\.(jpg|png|webp)$")
+# Only files we stored ourselves (see services/storage_service.py) may be referenced:
+# a local dev upload, or a file in our public Supabase Storage bucket.
+def _upload_re() -> "re.Pattern[str]":
+    from app.core.config import settings
+    name = r"[0-9a-f]{32}\.(jpg|png|webp)"
+    prefixes = [re.escape("/api/v1/static/uploads/")]
+    if settings.uses_cloud_storage:
+        prefixes.append(re.escape(settings.storage_public_prefix))
+    return re.compile(rf"^(?:{'|'.join(prefixes)}){name}$")
+
+
+UPLOAD_PATH_RE = _upload_re()
 OTP_PATTERN = r"^\d{6}$"
 
 
