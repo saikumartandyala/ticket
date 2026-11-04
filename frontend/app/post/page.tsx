@@ -76,8 +76,17 @@ export default function PostPage() {
   const faceN = toNumber(face);
   const askN = toNumber(asking);
   const band = faceN > 0 ? { min: Math.ceil(faceN * 0.3), max: Math.floor(faceN * 0.9) } : null;
+  // The asking price can never exceed what the ticket cost; the fair band caps it at 90%.
   const priceIssue =
-    band && askN > 0 ? (askN > band.max ? `Max ${money(band.max)} — 90% of face value.` : askN < band.min ? `Min ${money(band.min)} — 30% of face value.` : '') : '';
+    band && askN > 0
+      ? askN > faceN
+        ? `Asking price can’t be more than the ticket price (${money(faceN)}).`
+        : askN > band.max
+          ? `Max ${money(band.max)}: up to 90% of the ticket price, no scalping.`
+          : askN < band.min
+            ? `Min ${money(band.min)}: at least 30% of the ticket price.`
+            : ''
+      : '';
 
   const seatText = isRoute
     ? [coach, seat && `Seat ${seat}`].filter(Boolean).join(' · ')
@@ -126,6 +135,7 @@ export default function PostPage() {
     if (isRoute) {
       if (!from.trim()) e.from = 'Where does the journey start?';
       if (!to.trim()) e.to = 'Where does it end?';
+      else if (from.trim() && from.trim().toLowerCase() === to.trim().toLowerCase()) e.to = 'From and To can’t be the same place.';
       if (pnr && !/^\d{4}$/.test(pnr)) e.pnr = 'Enter exactly 4 digits.';
     } else {
       if (!eventName.trim()) e.eventName = 'What’s the event called?';
@@ -321,9 +331,9 @@ export default function PostPage() {
             </div>
           </Section>
 
-          <Section n="04" title="Price" desc="Asking price must be 30–90% of face value. It keeps the board fair.">
+          <Section n="04" title="Price" desc="Your asking price can’t be more than the ticket price: it must sit between 30% and 90% of what the ticket cost. It keeps the board fair.">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Face value (₹)" error={errors.face} hint={!errors.face ? 'Total printed on the ticket.' : undefined}>
+              <Field label="Ticket price (₹)" error={errors.face} hint={!errors.face ? 'Total printed on the ticket.' : undefined}>
                 {(p) => <Input {...p} type="number" inputMode="decimal" min={1} value={face} onChange={(e) => setFace(e.target.value)} placeholder="2450" className="font-mono" />}
               </Field>
               <Field

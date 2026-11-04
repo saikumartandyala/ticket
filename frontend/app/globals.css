@@ -119,6 +119,19 @@
   .no-scrollbar::-webkit-scrollbar { display: none; }
   .no-scrollbar { scrollbar-width: none; }
 
+  /* Visible, slim horizontal scrollbar for wide admin tables (phones included). */
+  .scroll-x { scrollbar-width: thin; scrollbar-color: rgb(var(--ink) / 0.25) transparent; -webkit-overflow-scrolling: touch; }
+  .scroll-x::-webkit-scrollbar { height: 6px; }
+  .scroll-x::-webkit-scrollbar-thumb { background: rgb(var(--ink) / 0.25); border-radius: 999px; }
+  .scroll-x::-webkit-scrollbar-track { background: transparent; }
+
+  /* Keep the first column visible while a wide table scrolls sideways on small screens. */
+  @media (max-width: 1023px) {
+    .admin-table th:first-child,
+    .admin-table td:first-child { position: sticky; left: 0; z-index: 1; background: rgb(var(--surface)); box-shadow: 1px 0 0 rgb(var(--line)); }
+    .admin-table thead th:first-child { background: rgb(var(--subtle)); }
+  }
+
   /* Ticket stub: notches cut out of the card at the perforation line. */
   .stub {
     --notch: 11px;

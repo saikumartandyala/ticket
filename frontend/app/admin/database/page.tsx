@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { ChevronDown, Database, Key, Link2 } from 'lucide-react';
-import { AdminHeader, EmptyRow, ErrorRow, Panel, SearchBox, TableSkeleton, td, th, useAdmin } from '../../../components/admin/ui';
+import { AdminHeader, EmptyRow, ErrorRow, Panel, SearchBox, Table, TableSkeleton, td, th, useAdmin } from '../../../components/admin/ui';
 import { Badge } from '../../../components/ui/misc';
 import { cn } from '../../../lib/cn';
 
@@ -60,8 +60,8 @@ export default function AdminDatabasePage() {
                   </button>
                   <div className={cn('grid transition-[grid-template-rows] duration-500 ease-out-expo', isOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]')}>
                     <div className="overflow-hidden">
-                      <div className="overflow-x-auto border-t border-line bg-bg/50">
-                        <table className="w-full min-w-[760px] border-separate border-spacing-0">
+                      <div className="border-t border-line bg-bg/50">
+                        <Table minWidth={760}>
                           <thead>
                             <tr><th className={th}>Column</th><th className={th}>Type</th><th className={th}>Keys</th><th className={th}>Description</th></tr>
                           </thead>
@@ -84,7 +84,7 @@ export default function AdminDatabasePage() {
                               </tr>
                             ))}
                           </tbody>
-                        </table>
+                        </Table>
                       </div>
                     </div>
                   </div>

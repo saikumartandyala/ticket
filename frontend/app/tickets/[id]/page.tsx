@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, BadgeCheck, Eye, MessageSquare, Star, TicketX, Users } from 'lucide-react';
+import { ArrowLeft, BadgeCheck, Eye, MessageSquare, ShieldAlert, Star, TicketX, Users } from 'lucide-react';
 import { api, assetUrl, errorMessage } from '../../../lib/api';
 import type { Listing, Match } from '../../../lib/types';
 import { categoryFor } from '../../../lib/categories';
@@ -263,6 +263,12 @@ export default function TicketDetailPage() {
                   <p className="text-center text-[13px] leading-snug text-ink-3">
                     Free and non-binding. If the seller accepts, a private chat opens.
                   </p>
+                  <div role="note" className="flex items-start gap-2 rounded-md border border-warn/30 bg-warn/10 px-3 py-2.5 text-[13px] leading-snug">
+                    <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-warn" />
+                    <span>
+                      <span className="font-semibold">Beware of fraud.</span> Verify the seller and the ticket before paying. Never send money in advance.
+                    </span>
+                  </div>
                 </div>
               )}
               {isOwner && error && <Notice tone="error" className="mt-3">{error}</Notice>}

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, ArrowUp, Check, Copy, Mail, PanelRight, Phone, Star, X } from 'lucide-react';
+import { ArrowLeft, ArrowUp, Check, Copy, Mail, PanelRight, Phone, ShieldAlert, Star, TriangleAlert, X } from 'lucide-react';
 import { api, errorMessage, wsBase } from '../../../lib/api';
 import type { Match, Message, User } from '../../../lib/types';
 import { categoryFor } from '../../../lib/categories';
@@ -18,11 +18,35 @@ import { cn } from '../../../lib/cn';
 type Conn = 'connecting' | 'open' | 'closed';
 
 const SAFETY = [
-  'Verify the PNR or barcode with the operator before paying.',
-  'Meet somewhere public, close to the station or venue.',
-  'Never share an OTP — no genuine transfer needs one.',
-  'Pay only the agreed amount, once the ticket is yours.',
+  'Beware of fraudsters. Make sure the other person is genuine before you agree to anything.',
+  'Verify the ticket (PNR, booking ID or barcode) with the operator or venue before paying.',
+  'Never send money in advance, as a "deposit", or to hold the ticket.',
+  'Never share an OTP, your UPI PIN or bank details. No genuine transfer needs them.',
+  'Meet somewhere public, close to the station or venue, and pay only once the ticket is yours.',
 ];
+
+/** Messages that talk about money or credentials get an inline fraud warning. */
+const PAYMENT_RE = /\b(upi|gpay|g-?pay|google ?pay|phone ?pe|paytm|bhim|neft|imps|rtgs|ifsc|bank|account (no|number)|advance|deposit|token amount|pay(ment|ing)?|send (me )?(the )?money|transfer (the )?(money|amount)|otp|pin|qr ?code|scan)\b/i;
+
+function mentionsPayment(text: string) {
+  return PAYMENT_RE.test(text);
+}
+
+const ACK_KEY = (matchId: string) => `to_chat_safety_${matchId}`;
+
+function FraudBanner() {
+  return (
+    <div role="note" className="sticky top-0 z-10 -mx-3 -mt-5 mb-5 border-b border-warn/30 bg-surface sm:-mx-5">
+      <div className="flex items-start gap-2.5 bg-warn/10 px-4 py-2.5 text-[13px] leading-snug">
+        <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-warn" />
+        <p>
+          <span className="font-semibold">Be careful with fraudsters.</span>{' '}
+          Make sure this person is genuine and verify the ticket before you pay. Never send money in advance and never share an OTP or UPI PIN.
+        </p>
+      </div>
+    </div>
+  );
+}
 
 function sameDay(a: Date, b: Date) {
   return a.toDateString() === b.toDateString();
@@ -80,6 +104,7 @@ export default function ChatPage() {
   const [loadState, setLoadState] = useState<'loading' | 'ok' | 'error'>('loading');
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState('');
+  const [safetyAck, setSafetyAck] = useState(true);
   const [sending, setSending] = useState(false);
   const [conn, setConn] = useState<Conn>('connecting');
   const [busy, setBusy] = useState<string | null>(null);
@@ -178,10 +203,20 @@ export default function ChatPage() {
     el.style.height = Math.min(el.scrollHeight, 140) + 'px';
   }, [draft]);
 
+  // Each chat asks once for an explicit "I understand" before the first message.
+  useEffect(() => {
+    try { setSafetyAck(localStorage.getItem(ACK_KEY(matchId)) === '1'); } catch { setSafetyAck(false); }
+  }, [matchId]);
+  const acknowledgeSafety = () => {
+    try { localStorage.setItem(ACK_KEY(matchId), '1'); } catch {}
+    setSafetyAck(true);
+    setTimeout(() => inputRef.current?.focus(), 50);
+  };
+
   /** Sent over HTTPS (works on every server instance); the socket and the poll deliver replies. */
   const send = async () => {
     const text = draft.trim();
-    if (!text || sending) return;
+    if (!text || sending || !safetyAck) return;
     setSending(true);
     setDraft('');
     try {
@@ -398,6 +433,7 @@ export default function ChatPage() {
         </header>
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-5 sm:px-5">
+          <FraudBanner />
           {match.seeker_note && (
             <div className="mx-auto mb-6 max-w-md rounded-md border border-line bg-bg px-4 py-3 text-center text-[13px] leading-relaxed text-ink-2">
               <span className="eyebrow mb-1 block">Request note</span>
@@ -440,6 +476,12 @@ export default function ChatPage() {
                         </span>
                       </div>
                     </div>
+                    {!mine && mentionsPayment(m.content) && (
+                      <div className="mt-1 flex max-w-[80%] items-start gap-1.5 text-xs leading-snug text-warn sm:max-w-[68%]">
+                        <TriangleAlert className="mt-px h-3.5 w-3.5 shrink-0" />
+                        <span>This message mentions payment. Don’t send any money until you’ve verified the ticket and the person.</span>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -447,6 +489,28 @@ export default function ChatPage() {
           )}
         </div>
 
+        {!closed && !safetyAck && (
+          <div className="border-t border-warn/30 bg-warn/10 px-4 py-3">
+            <div className="flex items-start gap-2.5">
+              <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-warn" />
+              <div className="min-w-0 flex-1 text-[13px] leading-relaxed">
+                <p className="font-semibold">Before you chat: stay safe from fraud</p>
+                <ul className="mt-1 list-disc space-y-0.5 pl-4 text-ink-2">
+                  <li>Check this person is genuine and verify the ticket with the operator or venue.</li>
+                  <li>Don’t send any money in advance or before the ticket is yours.</li>
+                  <li>Never share an OTP, UPI PIN or bank details.</li>
+                </ul>
+                <Button size="sm" className="mt-2.5" onClick={acknowledgeSafety}>I understand, continue</Button>
+              </div>
+            </div>
+          </div>
+        )}
+        {!closed && safetyAck && mentionsPayment(draft) && (
+          <div className="flex items-start gap-1.5 border-t border-warn/30 bg-warn/10 px-4 py-2 text-xs leading-snug text-warn">
+            <TriangleAlert className="mt-px h-3.5 w-3.5 shrink-0" />
+            <span>Talking about payment? Only pay after you’ve verified the ticket and met in person. TickOrbit never asks for an advance.</span>
+          </div>
+        )}
         <form
           onSubmit={(e) => { e.preventDefault(); send(); }}
           className="flex items-end gap-2 border-t border-line p-2.5 sm:p-3"
@@ -456,13 +520,13 @@ export default function ChatPage() {
             rows={1}
             value={draft}
             maxLength={500}
-            disabled={closed}
+            disabled={closed || !safetyAck}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
-            placeholder={closed ? 'This conversation is closed' : `Message ${otherName.split(' ')[0]}…`}
+            placeholder={closed ? 'This conversation is closed' : !safetyAck ? 'Read the safety note above to start chatting' : `Message ${otherName.split(' ')[0]}…`}
             className="max-h-[140px] min-h-[42px] flex-1 resize-none rounded-md border border-transparent bg-subtle px-3.5 py-2.5 text-[15px] leading-snug transition-[background-color,border-color,box-shadow] duration-200 placeholder:text-ink-3 focus:border-accent/50 focus:bg-surface focus:outline-none focus:ring-4 focus:ring-accent/10 disabled:opacity-60"
           />
-          <Button type="submit" className="h-[42px] w-[42px] shrink-0 !px-0" aria-label="Send message" disabled={!draft.trim() || closed}>
+          <Button type="submit" className="h-[42px] w-[42px] shrink-0 !px-0" aria-label="Send message" disabled={!draft.trim() || closed || !safetyAck || sending}>
             <ArrowUp className="h-[18px] w-[18px]" />
           </Button>
         </form>

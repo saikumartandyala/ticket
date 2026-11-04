@@ -17,7 +17,6 @@ import uuid
 
 import httpx
 from fastapi import HTTPException, UploadFile
-from PIL import Image, ImageOps, UnidentifiedImageError
 
 from app.core.config import settings
 from app.core.logging import get_logger
@@ -31,7 +30,6 @@ MAX_PIXELS = 40_000_000            # ~40 MP; blocks decompression bombs
 MAX_SIDE = 2400                    # stored images are downscaled to this
 ALLOWED = {"JPEG": "jpg", "PNG": "png", "WEBP": "webp"}
 
-Image.MAX_IMAGE_PIXELS = MAX_PIXELS
 
 
 def _bad(msg: str) -> HTTPException:
@@ -39,6 +37,8 @@ def _bad(msg: str) -> HTTPException:
 
 
 async def upload_ticket_photo(file: UploadFile) -> str:
+    from PIL import Image, ImageOps, UnidentifiedImageError  # imported on demand: keeps cold starts fast
+    Image.MAX_IMAGE_PIXELS = MAX_PIXELS
     data = await file.read(MAX_BYTES + 1)
     if len(data) > MAX_BYTES:
         raise HTTPException(status_code=413, detail="Photo is too large (max 8 MB)")

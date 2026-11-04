@@ -89,14 +89,22 @@ def get_password_hash(password: str) -> str:
 
 
 # Used when an account doesn't exist, so a failed login takes as long as a real
-# one and response timing can't reveal which emails are registered.
-_DUMMY_HASH = get_password_hash(secrets.token_urlsafe(16))
+# one and response timing can't reveal which emails are registered. Built on
+# first use (not at import) so cold starts don't pay for it.
+_dummy_hash: Optional[str] = None
+
+
+def _get_dummy_hash() -> str:
+    global _dummy_hash
+    if _dummy_hash is None:
+        _dummy_hash = get_password_hash(secrets.token_urlsafe(16))
+    return _dummy_hash
 
 
 def verify_password(plain_password: str, hashed_password: Optional[str]) -> bool:
     """Constant-time check of a password against a stored hash. Never raises."""
     if not hashed_password:
-        verify_password(plain_password, _DUMMY_HASH)
+        verify_password(plain_password, _get_dummy_hash())
         return False
     try:
         if hashed_password.startswith(PASSWORD_SCHEME + "$"):
@@ -118,3 +126,17 @@ def password_needs_rehash(hashed_password: Optional[str]) -> bool:
         return int(hashed_password.split("$")[1]) < PBKDF2_ITERATIONS
     except (IndexError, ValueError):
         return True
+
+
+# --- Async wrappers -----------------------------------------------------------
+# PBKDF2 takes ~0.25 s of CPU on purpose. Running it on a worker thread keeps
+# the event loop free, so other requests on the same instance aren't frozen.
+
+async def averify_password(plain_password: str, hashed_password: Optional[str]) -> bool:
+    from starlette.concurrency import run_in_threadpool
+    return await run_in_threadpool(verify_password, plain_password, hashed_password)
+
+
+async def aget_password_hash(password: str) -> str:
+    from starlette.concurrency import run_in_threadpool
+    return await run_in_threadpool(get_password_hash, password)

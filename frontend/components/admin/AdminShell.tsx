@@ -6,9 +6,10 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   ArrowLeftRight, Bug, ChartLine, Database, ExternalLink, LayoutDashboard, LogOut, Megaphone, ScrollText, SearchX, Star, Tags, Ticket, Users,
 } from 'lucide-react';
-import { api } from '../../lib/api';
-import type { User } from '../../lib/types';
+
+
 import { useAuthStore } from '../../store/authStore';
+import { prefetchAdmin } from './ui';
 import { LogoLockup } from '../site/Logo';
 import { ThemeToggle } from '../site/ThemeToggle';
 import { Avatar, EmptyState, Skeleton } from '../ui/misc';
@@ -36,19 +37,19 @@ function active(pathname: string, href: string) {
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() || '/admin';
   const router = useRouter();
-  const { hydrated, isAuthenticated, user, updateUser, logout } = useAuthStore();
+  const { hydrated, isAuthenticated, user, logout } = useAuthStore();
   const [access, setAccess] = useState<'checking' | 'ok' | 'denied'>('checking');
   const isLogin = pathname === '/admin/login';
 
   useEffect(() => {
     if (isLogin || !hydrated) return;
     if (!isAuthenticated) { router.replace('/admin/login'); return; }
-    // Re-check with the server: the stored profile may predate a role change.
-    api<User>('/auth/me')
-      .then((me) => { updateUser(me); setAccess(me.is_admin ? 'ok' : 'denied'); })
-      .catch((e) => { if (e?.status === 401) { logout(); router.replace('/admin/login'); } else setAccess('denied'); });
+    // The session was just confirmed by the server (hydrate() / sign-in), so no
+    // second round trip is needed. Every admin API call is re-checked server-side.
+    setAccess(user?.is_admin ? 'ok' : 'denied');
+    if (user?.is_admin) prefetchAdmin(['/stats', '/activity?days=14', '/recent', '/users?q=&filter=all&page=1&size=20', '/analytics?range=7d']);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated, isAuthenticated, isLogin]);
+  }, [hydrated, isAuthenticated, isLogin, user?.is_admin]);
 
   if (isLogin) return <>{children}</>;
 

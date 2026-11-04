@@ -11,20 +11,50 @@ import { cn } from '../../lib/cn';
 
 /* ------------------------------------------------------------------ data */
 
+/**
+ * Admin data with stale-while-revalidate caching: a section you've already
+ * opened renders instantly from memory while fresh data loads in the
+ * background, so switching between sections never shows an empty skeleton.
+ */
+const adminCache = new Map<string, unknown>();
+const inflight = new Map<string, Promise<unknown>>();
+
+function fetchAdmin<T>(path: string): Promise<T> {
+  const existing = inflight.get(path);
+  if (existing) return existing as Promise<T>;
+  const p = api<T>(`/admin${path}`)
+    .then((d) => { adminCache.set(path, d); return d; })
+    .finally(() => inflight.delete(path));
+  inflight.set(path, p);
+  return p;
+}
+
+/** Warm the cache for sections the admin is likely to open next. */
+export function prefetchAdmin(paths: string[]) {
+  for (const p of paths) if (!adminCache.has(p)) fetchAdmin(p).catch(() => {});
+}
+
 export function useAdmin<T>(path: string | null) {
   const signedIn = useAuthStore((s) => s.isAuthenticated);
-  const [data, setData] = useState<T | null>(null);
+  const [data, setDataState] = useState<T | null>(() => (path ? ((adminCache.get(path) as T) ?? null) : null));
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
+  const setData = useCallback((d: T | null) => {
+    if (path) { if (d === null) adminCache.delete(path); else adminCache.set(path, d); }
+    setDataState(d);
+  }, [path]);
+
   const load = useCallback(async () => {
     if (!path || !signedIn) return;
+    const cached = adminCache.get(path) as T | undefined;
+    if (cached !== undefined) setDataState(cached);
     setLoading(true);
     setError('');
     try {
-      setData(await api<T>(`/admin${path}`));
+      setDataState(await fetchAdmin<T>(path));
     } catch (e) {
-      setError(errorMessage(e));
+      if (cached === undefined) setError(errorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -144,11 +174,45 @@ export function Segmented<T extends string>({ value, onChange, options }: { valu
 export const th = 'whitespace-nowrap border-b border-line bg-subtle/50 px-4 py-2.5 text-left font-mono text-[11px] font-normal uppercase tracking-[0.06em] text-ink-3';
 export const td = 'border-b border-line px-4 py-3 align-middle text-sm';
 
-export function Table({ children }: { children: React.ReactNode }) {
+/**
+ * Horizontal scroller for wide content. On narrow screens it shows a visible
+ * scrollbar, fades the edge that has more content, and a one-line
+ * "swipe" hint, so it's obvious the table continues sideways.
+ */
+export function ScrollX({ children, className }: { children: React.ReactNode; className?: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [edges, setEdges] = useState({ left: false, right: false });
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () => setEdges({ left: el.scrollLeft > 4, right: el.scrollLeft + el.clientWidth < el.scrollWidth - 4 });
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    return () => { el.removeEventListener('scroll', update); ro.disconnect(); };
+  }, []);
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[720px] border-separate border-spacing-0">{children}</table>
+    <div className={cn('relative', className)}>
+      {(edges.right || edges.left) && (
+        <div className="flex items-center justify-end gap-1 border-b border-line px-4 py-1.5 font-mono text-[11px] text-ink-3 lg:hidden" aria-hidden>
+          Swipe to see more <ChevronRight className="h-3 w-3" />
+        </div>
+      )}
+      <div ref={ref} className="scroll-x overflow-x-auto overscroll-x-contain">{children}</div>
+      <div aria-hidden className={cn('pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-surface to-transparent transition-opacity', edges.left ? 'opacity-100' : 'opacity-0')} />
+      <div aria-hidden className={cn('pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-surface to-transparent transition-opacity', edges.right ? 'opacity-100' : 'opacity-0')} />
     </div>
+  );
+}
+
+/** Admin data table: scrolls sideways on small screens with the first column pinned. */
+export function Table({ children, minWidth = 720 }: { children: React.ReactNode; minWidth?: number }) {
+  return (
+    <ScrollX>
+      <table className="admin-table w-full border-separate border-spacing-0" style={{ minWidth }}>{children}</table>
+    </ScrollX>
   );
 }
 

@@ -294,6 +294,15 @@ class Notification(Base):
 
 # ============================================================ admin & monitoring
 
+class AppMeta(Base):
+    __tablename__ = "app_meta"
+    __table_args__ = {"comment": "Small key/value facts about the deployment (schema version, settings fingerprints) used to keep cold starts fast."}
+
+    key = Column(String(60), primary_key=True, comment="e.g. schema_version, admin_settings")
+    value = Column(String(200), nullable=False, comment="Version string or HMAC fingerprint (never a secret itself)")
+    updated_at = updated_at_col()
+
+
 class AdminAuditLog(Base):
     __tablename__ = "admin_audit_logs"
     __table_args__ = {"comment": "Every change made from the admin console, and every private chat an admin opened."}

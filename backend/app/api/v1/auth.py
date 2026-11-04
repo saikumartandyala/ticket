@@ -122,7 +122,7 @@ async def _create_otp(request: Request, db: AsyncSession, identifier: str, chann
     otp = security.generate_otp()
     db.add(OTPSession(
         identifier=identifier, channel=channel, purpose=purpose,
-        otp_hash=security.get_password_hash(otp),
+        otp_hash=await security.aget_password_hash(otp),
         expires_at=now + timedelta(minutes=OTP_TTL_MINUTES),
     ))
     await db.commit()
@@ -150,7 +150,7 @@ async def _consume_otp(request: Request, db: AsyncSession, identifier: str, chan
         raise HTTPException(400, "Too many attempts. Request a new code.")
 
     session.attempts += 1
-    if not security.verify_password(code, session.otp_hash):
+    if not await security.averify_password(code, session.otp_hash):
         if session.attempts >= MAX_OTP_ATTEMPTS:
             session.is_used = True
         await db.commit()
@@ -217,7 +217,7 @@ async def login_password(payload: PasswordLoginRequest, request: Request, respon
     ratelimit.enforce(request, "login-id", 8, 900, subject=payload.identifier)
 
     user = await _get_user_by_identifier(db, payload.identifier, payload.channel)
-    if not security.verify_password(payload.password, user.password_hash if user else None):
+    if not await security.averify_password(payload.password, user.password_hash if user else None):
         log.warning("Failed password sign-in for %s", _mask(payload.identifier))
         raise HTTPException(401, "Incorrect email or password")
     if not user.is_active or user.is_banned:
@@ -225,7 +225,7 @@ async def login_password(payload: PasswordLoginRequest, request: Request, respon
 
     ratelimit.reset(f"login-id:{payload.identifier}")
     if security.password_needs_rehash(user.password_hash):
-        user.password_hash = security.get_password_hash(payload.password)  # upgrade legacy hash in place
+        user.password_hash = await security.aget_password_hash(payload.password)  # upgrade legacy hash in place
     user.last_active_at = utcnow()
     track(db, "login", user.id, {"method": "password"})
     await db.commit()
@@ -245,9 +245,9 @@ async def set_password(
     """Set a password (first time), or change it with the current one."""
     if current_user.password_hash:
         ratelimit.enforce(request, "change-password", 5, 900, subject=current_user.id)
-        if not payload.current_password or not security.verify_password(payload.current_password, current_user.password_hash):
+        if not payload.current_password or not await security.averify_password(payload.current_password, current_user.password_hash):
             raise HTTPException(400, "Your current password is incorrect")
-    current_user.password_hash = security.get_password_hash(payload.password)
+    current_user.password_hash = await security.aget_password_hash(payload.password)
     current_user.token_version = (current_user.token_version or 0) + 1
     await db.commit()
     _set_session_cookie(response, current_user)  # this device stays signed in, others are signed out
@@ -273,7 +273,7 @@ async def reset_password(payload: ResetPasswordRequest, request: Request, db: As
     user = await _get_user_by_identifier(db, payload.identifier, payload.channel)
     if not user:
         raise HTTPException(400, "Invalid or expired code")
-    user.password_hash = security.get_password_hash(payload.new_password)
+    user.password_hash = await security.aget_password_hash(payload.new_password)
     user.token_version = (user.token_version or 0) + 1
     await db.commit()
     log.info("Password reset for %s", _mask(payload.identifier))

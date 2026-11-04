@@ -5,7 +5,7 @@ import {
   ArrowLeftRight, Eye, Globe, LogIn, Monitor, MousePointerClick, Search, Smartphone, Tablet, Ticket, TrendingDown, TrendingUp, UserPlus, Users,
 } from 'lucide-react';
 import { AreaChart, BarList } from '../../../components/admin/charts';
-import { AdminHeader, Panel, Segmented, td, th, useAdmin } from '../../../components/admin/ui';
+import { AdminHeader, Panel, Segmented, Table, td, th, useAdmin } from '../../../components/admin/ui';
 import { CountUp } from '../../../components/motion';
 import { Skeleton } from '../../../components/ui/misc';
 import { parseUtc, relativeTime } from '../../../lib/format';
@@ -159,7 +159,7 @@ export default function AdminAnalyticsPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel title="Top pages" bodyClass="p-0">
           {!a ? <Skeleton className="m-4 h-48" /> : a.top_pages.length === 0 ? <Empty /> : (
-            <table className="w-full border-separate border-spacing-0">
+            <Table minWidth={420}>
               <thead><tr><th className={th}>Page</th><th className={cn(th, 'text-right')}>Views</th><th className={cn(th, 'text-right')}>Visitors</th></tr></thead>
               <tbody>
                 {a.top_pages.map((p) => (
@@ -170,13 +170,13 @@ export default function AdminAnalyticsPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </Table>
           )}
         </Panel>
 
         <Panel title="Most clicked" bodyClass="p-0">
           {!a ? <Skeleton className="m-4 h-48" /> : a.top_clicks.length === 0 ? <Empty /> : (
-            <table className="w-full border-separate border-spacing-0">
+            <Table minWidth={420}>
               <thead><tr><th className={th}>Button / link</th><th className={th}>On page</th><th className={cn(th, 'text-right')}>Clicks</th></tr></thead>
               <tbody>
                 {a.top_clicks.map((c, i) => (
@@ -187,7 +187,7 @@ export default function AdminAnalyticsPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </Table>
           )}
         </Panel>
       </div>

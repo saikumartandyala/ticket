@@ -33,7 +33,7 @@ async def ensure_admin_account(db: AsyncSession) -> None:
             email=email,
             name=settings.ADMIN_NAME or "TickOrbit Admin",
             email_verified=True,
-            password_hash=security.get_password_hash(password),
+            password_hash=await security.aget_password_hash(password),
             is_admin=True,
         )
         db.add(user)
@@ -43,11 +43,11 @@ async def ensure_admin_account(db: AsyncSession) -> None:
         user.is_active = True
         user.is_banned = False
         user.email_verified = True
-        if not user.password_hash or not security.verify_password(password, user.password_hash):
-            user.password_hash = security.get_password_hash(password)
+        if not user.password_hash or not await security.averify_password(password, user.password_hash):
+            user.password_hash = await security.aget_password_hash(password)
             user.token_version = (user.token_version or 0) + 1  # old admin sessions end
             logger.info("Updated admin password for %s from environment", email)
         elif security.password_needs_rehash(user.password_hash):
-            user.password_hash = security.get_password_hash(password)
+            user.password_hash = await security.aget_password_hash(password)
             logger.info("Upgraded admin password hash to PBKDF2-SHA256")
     await db.commit()

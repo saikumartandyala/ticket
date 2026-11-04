@@ -185,6 +185,23 @@ class ListingCreate(BaseModel):
     booking_ref: Optional[str] = Field(None, max_length=40)
     ticket_photos: List[str] = Field(default_factory=list, max_length=3)
 
+    @field_validator("title", "description", "origin_city", "destination_city", "operator_name", "operator_code",
+                     "event_name", "venue_name", "venue_city", "section", "row_number", "booking_ref", mode="before")
+    @classmethod
+    def _trim_text(cls, v):
+        if isinstance(v, str):
+            v = " ".join(v.split())
+            return v or None
+        return v
+
+    @model_validator(mode="after")
+    def _route_makes_sense(self) -> "ListingCreate":
+        if self.origin_city and self.destination_city and self.origin_city.lower() == self.destination_city.lower():
+            raise ValueError("From and To can't be the same place")
+        if not ((self.origin_city and self.destination_city) or self.event_name or self.venue_name):
+            raise ValueError("Add the route (from and to) or the event name")
+        return self
+
     @field_validator("seat_details")
     @classmethod
     def _small_seat_details(cls, v: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -209,12 +226,14 @@ class ListingCreate(BaseModel):
     def validate_price_guardrails(cls, v: Decimal, info: Any) -> Decimal:
         original = info.data.get("original_price")
         if original is not None:
-            min_price = original * Decimal("0.30")
-            max_price = original * Decimal("0.90")
+            if v > original:
+                raise ValueError(f"Asking price can't be more than the ticket price (₹{original:,.0f})")
+            max_price = (original * Decimal("0.90")).quantize(Decimal("1"))
+            min_price = (original * Decimal("0.30")).quantize(Decimal("1"))
             if v > max_price:
-                raise ValueError("Asking price exceeds 90% anti-scalping limit of original price")
+                raise ValueError(f"Asking price can be at most 90% of the ticket price (₹{max_price:,.0f}) - no scalping")
             if v < min_price:
-                raise ValueError("Asking price is below 30% minimum limit of original price")
+                raise ValueError(f"Asking price must be at least 30% of the ticket price (₹{min_price:,.0f})")
         return v
 
     @field_validator("event_date")
@@ -264,6 +283,11 @@ class ListingResponse(BaseModel):
 class ExpressInterestRequest(BaseModel):
     seeker_note: Optional[str] = Field(None, max_length=200)
 
+    @field_validator("seeker_note", mode="before")
+    @classmethod
+    def _trim(cls, v):
+        return (v.strip() or None) if isinstance(v, str) else v
+
 class MatchResponse(BaseModel):
     id: str
     listing_id: str
@@ -291,7 +315,16 @@ class MatchResponse(BaseModel):
 
 # --- MESSAGING SCHEMAS ---
 class MessageCreate(BaseModel):
-    content: str = Field(..., max_length=500)
+    content: str = Field(..., min_length=1, max_length=500)
+
+    @field_validator("content", mode="before")
+    @classmethod
+    def _trim(cls, v):
+        if isinstance(v, str):
+            v = v.strip()
+            if not v:
+                raise ValueError("Message can't be empty")
+        return v
 
 class MessageResponse(BaseModel):
     id: str
@@ -307,14 +340,35 @@ class MessageResponse(BaseModel):
 
 # --- SEEKER ALERT SCHEMAS ---
 class SeekerAlertCreate(BaseModel):
-    category_id: Optional[int] = None
-    origin_city: Optional[str] = None
-    destination_city: Optional[str] = None
-    event_name: Optional[str] = None
-    venue_city: Optional[str] = None
+    category_id: Optional[int] = Field(None, ge=1)
+    origin_city: Optional[str] = Field(None, max_length=100)
+    destination_city: Optional[str] = Field(None, max_length=100)
+    event_name: Optional[str] = Field(None, max_length=200)
+    venue_city: Optional[str] = Field(None, max_length=100)
     date_from: Optional[date] = None
     date_to: Optional[date] = None
-    max_price: Optional[Decimal] = None
+    max_price: Optional[Decimal] = Field(None, gt=0, le=1_000_000)
+
+    @field_validator("origin_city", "destination_city", "event_name", "venue_city", mode="before")
+    @classmethod
+    def _trim_text(cls, v):
+        if isinstance(v, str):
+            v = " ".join(v.split())
+            return v or None
+        return v
+
+    @model_validator(mode="after")
+    def _sensible(self) -> "SeekerAlertCreate":
+        from app.core.timeutil import local_today
+        if self.date_from and self.date_to and self.date_to < self.date_from:
+            raise ValueError("'To' date can't be before the 'From' date")
+        if self.date_to and self.date_to < local_today():
+            raise ValueError("Alert dates can't be in the past")
+        if self.origin_city and self.destination_city and self.origin_city.lower() == self.destination_city.lower():
+            raise ValueError("From and To can't be the same place")
+        if not any([self.category_id, self.origin_city, self.destination_city, self.event_name, self.venue_city]):
+            raise ValueError("Tell us what to watch for: a category, route, city or event")
+        return self
 
 class SeekerAlertResponse(BaseModel):
     id: str
@@ -338,6 +392,11 @@ class SeekerAlertResponse(BaseModel):
 class ReviewCreate(BaseModel):
     rating: int = Field(..., ge=1, le=5)
     comment: Optional[str] = Field(None, max_length=300)
+
+    @field_validator("comment", mode="before")
+    @classmethod
+    def _trim(cls, v):
+        return (v.strip() or None) if isinstance(v, str) else v
 
 class ReviewResponse(BaseModel):
     id: str

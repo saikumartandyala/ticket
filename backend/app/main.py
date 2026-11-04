@@ -22,17 +22,6 @@ UPLOAD_DIR = os.path.join(STATIC_DIR, "uploads")
 if not settings.uses_cloud_storage:
     os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-def _add_missing_columns(sync_conn):
-    """Tiny forward-only migration for columns added after a DB was created
-    (create_all never alters existing tables)."""
-    from sqlalchemy import inspect, text
-    cols = {c["name"] for c in inspect(sync_conn).get_columns("users")}
-    if "is_admin" not in cols:
-        sync_conn.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT FALSE"))
-    if "token_version" not in cols:
-        sync_conn.execute(text("ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0"))
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup actions: Auto create tables and insert seed data
@@ -40,39 +29,8 @@ async def lifespan(app: FastAPI):
     log.info("Starting %s (%s) - database: %s, timezone: %s, log level: %s",
              settings.PROJECT_NAME, settings.ENVIRONMENT, db_kind, settings.APP_TIMEZONE, settings.LOG_LEVEL.upper())
     log.info("HTTPS required: %s, allowed origins: %s", settings.FORCE_HTTPS, ", ".join(settings.frontend_origins))
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        await conn.run_sync(_add_missing_columns)
-    log.info("Database schema ready (%d tables)", len(Base.metadata.tables))
-        
-    async with async_session_maker() as db:
-        # Check if categories already exist
-        from sqlalchemy import select
-        res = await db.execute(select(Category))
-        categories = res.scalars().all()
-        if not categories:
-            seed_data = [
-                Category(slug="train", name="Train", icon="🚂", color_hex="#2563eb", sort_order=1),
-                Category(slug="bus", name="Bus", icon="🚌", color_hex="#059669", sort_order=2),
-                Category(slug="ipl", name="IPL", icon="🏏", color_hex="#dc2626", sort_order=3),
-                Category(slug="cricket", name="Cricket", icon="🏟️", color_hex="#16a34a", sort_order=4),
-                Category(slug="concert", name="Concert", icon="🎵", color_hex="#7c3aed", sort_order=5),
-                Category(slug="event", name="Event", icon="🎭", color_hex="#a855f7", sort_order=6)
-            ]
-            db.add_all(seed_data)
-            await db.commit()
-
-        # Promote configured admin emails.
-        admin_emails = [e.strip().lower() for e in settings.ADMIN_EMAILS.split(",") if e.strip()]
-        if admin_emails:
-            from sqlalchemy import update, func
-            from app.models import User
-            await db.execute(update(User).where(func.lower(User.email).in_(admin_emails)).values(is_admin=True))
-            await db.commit()
-
-        from app.services.admin_bootstrap import ensure_admin_account
-        await ensure_admin_account(db)
-
+    from app.core.startup import run_startup
+    await run_startup()
     log.info("API ready at %s", settings.API_V1_STR)
             
     yield
